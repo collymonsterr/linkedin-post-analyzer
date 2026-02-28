@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LinkedIn Post Analytics</title>
+<style>
+  :root {
+    --blue: #0a66c2;
+    --blue-light: #dbeafe;
+    --green: #059669;
+    --green-light: #d1fae5;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --orange-light: #ffedd5;
+    --purple: #7c3aed;
+    --purple-light: #ede9fe;
+    --teal: #0d9488;
+    --teal-light: #ccfbf1;
+    --pink: #db2777;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #0f172a;
+    --text-secondary: #64748b;
+    --border: #e2e8f0;
+    --radius: 14px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+    --shadow-hover: 0 4px 24px rgba(0,0,0,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  .header {
+    background: linear-gradient(135deg, #0a66c2 0%, #0052a3 50%, #1e40af 100%);
+    color: #fff;
+    padding: 36px 32px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -40%; right: -10%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -30%; left: -5%;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; position: relative; }
+  .header p { font-size: 14px; opacity: 0.85; margin-top: 6px; position: relative; }
+  .container {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 28px 24px 60px;
+  }
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s ease;
+    border: 1px solid rgba(0,0,0,0.03);
+  }
+  .card:hover { box-shadow: var(--shadow-hover); }
+  .card h2 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 .icon { font-size: 18px; }
+  .card .subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: -10px;
+    margin-bottom: 14px;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .stat-card {
+    background: var(--blue-light);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    transition: transform 0.15s ease;
+  }
+  .stat-card:hover { transform: translateY(-2px); }
+  .stat-card.green { background: var(--green-light); }
+  .stat-card.green .value { color: var(--green); }
+  .stat-card.purple { background: var(--purple-light); }
+  .stat-card.purple .value { color: var(--purple); }
+  .stat-card.orange { background: var(--orange-light); }
+  .stat-card.orange .value { color: var(--orange); }
+  .stat-card .icon { font-size: 22px; margin-bottom: 4px; }
+  .stat-card .value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--blue);
+    letter-spacing: -0.5px;
+  }
+  .stat-card .label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .chart-container { position: relative; width: 100%; }
+  .chart-container canvas { width: 100%; display: block; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  th {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.8px; font-weight: 700;
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  tr:nth-child(even) { background: #f8fafc; }
+  tr:hover { background: #eef2ff !important; }
+  .post-cell { max-width: 400px; }
+  .post-summary {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .post-summary a { color: var(--text); text-decoration: none; }
+  .post-summary a:hover { color: var(--blue); }
+  .cat-pills { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+  .cat-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .rank {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    font-size: 12px; font-weight: 800;
+    background: linear-gradient(135deg, #0a66c2, #1e40af); color: #fff;
+  }
+  .rank.gold { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .rank.silver { background: linear-gradient(135deg, #94a3b8, #64748b); }
+  .rank.bronze { background: linear-gradient(135deg, #c2884a, #92400e); }
+  .hook-type {
+    margin-bottom: 18px;
+    padding: 18px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border-left: 4px solid var(--blue);
+  }
+  .hook-type-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .hook-type-name { font-weight: 700; font-size: 14px; }
+  .hook-type-stats { font-size: 12px; color: var(--text-secondary); }
+  .hook-type-bar {
+    height: 6px; border-radius: 3px; background: var(--border); margin-bottom: 10px;
+  }
+  .hook-type-bar-fill {
+    height: 100%; border-radius: 3px; transition: width 0.5s ease;
+  }
+  .hook-type-example {
+    font-size: 13px; color: #475569; font-style: italic; line-height: 1.5;
+  }
+  .hook-type-example strong { font-style: normal; color: var(--text); }
+  .hook-summary {
+    margin-top: 20px; padding: 18px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--blue-light), var(--purple-light));
+  }
+  .hook-summary h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .hook-summary p { font-size: 13px; color: #475569; line-height: 1.6; }
+  .insight-list { display: flex; flex-direction: column; gap: 16px; }
+  .insight {
+    padding: 20px 22px; border-radius: 10px;
+    border-left: 4px solid var(--blue); background: #f8fafc;
+    transition: box-shadow 0.15s;
+  }
+  .insight:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .insight.green { border-left-color: var(--green); }
+  .insight.purple { border-left-color: var(--purple); }
+  .insight.orange { border-left-color: var(--orange); }
+  .insight h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .insight p { font-size: 13px; color: #475569; line-height: 1.7; }
+  .rec-list { display: flex; flex-direction: column; gap: 14px; }
+  .rec-item {
+    display: flex; gap: 14px; padding: 16px 18px;
+    border-radius: 10px; background: #f8fafc;
+    border: 1px solid var(--border); transition: box-shadow 0.15s;
+  }
+  .rec-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .rec-num {
+    flex-shrink: 0; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-weight: 800; font-size: 13px;
+    background: var(--blue); color: #fff;
+  }
+  .rec-body h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .rec-body p { font-size: 13px; color: #475569; line-height: 1.6; }
+  .freq-detail { display: flex; flex-direction: column; gap: 14px; }
+  .funnel { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 20px 0; }
+  .funnel-step {
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; color: #fff; font-weight: 700; font-size: 15px;
+    border-radius: 10px; text-align: center; line-height: 1.3;
+  }
+  .funnel-arrow { font-size: 18px; color: #cbd5e1; padding: 2px 0; }
+  .funnel-pct { font-size: 11px; color: var(--text-secondary); padding: 2px 0; font-weight: 600; }
+  .cat-table td:first-child { font-weight: 700; }
+  .cat-chart-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .cat-chart-label { width: 140px; font-size: 13px; font-weight: 600; text-align: right; flex-shrink: 0; }
+  .cat-chart-bar-bg { flex: 1; height: 28px; background: #f1f5f9; border-radius: 8px; overflow: hidden; }
+  .cat-chart-bar { height: 100%; border-radius: 8px; display: flex; align-items: center; padding-left: 10px; color: #fff; font-size: 12px; font-weight: 700; min-width: 30px; transition: width 0.5s ease; }
+  .cat-chart-stats { width: 160px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+  #scatter-tooltip {
+    display: none; position: fixed; background: #fff; border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; font-size: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12); pointer-events: none; z-index: 100; max-width: 300px;
+  }
+  #loading { text-align: center; padding: 80px 20px; font-size: 18px; color: var(--text-secondary); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .action-bar {
+    display: flex; gap: 10px; justify-content: center;
+    margin-top: 16px; position: relative; z-index: 1;
+  }
+  .action-bar button {
+    padding: 8px 20px; border-radius: 20px; border: 2px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.15); color: #fff; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; backdrop-filter: blur(4px);
+  }
+  .action-bar button:hover { background: rgba(255,255,255,0.3); border-color: #fff; }
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 20px; padding: 12px 16px;
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,0.03);
+    flex-wrap: wrap;
+  }
+  .filter-label {
+    font-size: 12px; font-weight: 700;
+    color: var(--text-secondary); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-right: 4px;
+  }
+  .filter-btn {
+    padding: 6px 14px; border-radius: 20px;
+    border: 1.5px solid var(--border); background: #fff;
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .filter-btn.active {
+    background: var(--blue); color: #fff;
+    border-color: var(--blue);
+  }
+  .filter-bar .filter-count {
+    margin-left: auto; font-size: 12px;
+    color: var(--text-secondary); font-weight: 500;
+  }
+
+  /* ── Tab navigation ── */
+  .tab-bar {
+    display: flex; gap: 0;
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid rgba(0,0,0,0.03);
+    margin-bottom: 22px;
+    overflow: hidden;
+    position: sticky; top: 0; z-index: 150;
+  }
+  .tab-btn {
+    flex: 1; padding: 16px 20px;
+    border: none; background: none;
+    font-size: 14px; font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer; transition: all 0.2s;
+    position: relative;
+    display: flex; align-items: center;
+    justify-content: center; gap: 8px;
+  }
+  .tab-btn:hover { color: var(--blue); background: var(--blue-light); }
+  .tab-btn.active {
+    color: var(--blue); background: var(--blue-light);
+  }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 3px; background: var(--blue);
+    border-radius: 3px 3px 0 0;
+  }
+  .tab-btn .tab-icon { font-size: 16px; }
+  .tab-btn .tab-desc {
+    font-size: 11px; font-weight: 400;
+    color: var(--text-secondary);
+    display: none;
+  }
+  @media (min-width: 640px) {
+    .tab-btn .tab-desc { display: block; }
+    .tab-btn { flex-direction: column; gap: 2px; padding: 14px 20px; }
+    .tab-btn .tab-label { display: flex; align-items: center; gap: 8px; }
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Section navigator ── */
+  .section-nav {
+    position: fixed; top: 50%; right: 16px;
+    transform: translateY(-50%);
+    z-index: 200; display: flex; flex-direction: column;
+    gap: 2px; background: rgba(255,255,255,0.92);
+    border-radius: 12px; padding: 8px 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    backdrop-filter: blur(8px);
+    max-height: 80vh; overflow-y: auto;
+  }
+  .section-nav a {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 8px;
+    text-decoration: none; font-size: 11px;
+    color: var(--text-secondary); white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .section-nav a:hover { background: var(--blue-light); color: var(--blue); }
+  .section-nav a.active { background: var(--blue); color: #fff; font-weight: 600; }
+  .section-nav .nav-icon { font-size: 13px; flex-shrink: 0; }
+  .section-nav .nav-label { display: none; }
+  .section-nav:hover .nav-label { display: inline; }
+  .section-nav:hover { padding: 8px 10px; }
+
+  /* ── Calendar grid ── */
+  .calendar-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+  }
+  .cal-day {
+    padding: 10px 6px; border-radius: 8px;
+    text-align: center; font-size: 12px;
+    background: #f8fafc; border: 1px solid var(--border);
+  }
+  .cal-day-name { font-weight: 700; font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
+  .cal-day-topic { font-size: 11px; font-weight: 600; line-height: 1.3; margin-top: 4px; }
+  .cal-day.highlight { background: var(--blue-light); border-color: var(--blue); }
+  .cal-day.rest { background: #f1f5f9; opacity: 0.6; }
+
+  /* ── Share summary ── */
+  .share-box {
+    background: linear-gradient(135deg, #f8fafc, #eef2ff);
+    border-radius: 12px; padding: 20px;
+    border: 1px solid var(--border);
+    font-size: 13px; line-height: 1.6;
+    white-space: pre-wrap; font-family: inherit;
+  }
+  .share-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .share-actions button {
+    padding: 8px 18px; border-radius: 20px; border: none;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .share-btn-primary { background: var(--blue); color: #fff; }
+  .share-btn-primary:hover { background: #004182; }
+  .share-btn-outline { background: #fff; border: 1.5px solid var(--blue) !important; color: var(--blue); }
+  .share-btn-outline:hover { background: var(--blue-light); }
+  .copied-msg { font-size: 12px; color: var(--green); font-weight: 600; display: none; align-self: center; }
+
+  /* ── Collapsible sections ── */
+  .card h2 { cursor: pointer; user-select: none; }
+  .card h2 .collapse-chevron {
+    margin-left: auto; font-size: 12px;
+    transition: transform 0.2s ease; color: var(--text-secondary);
+  }
+  .card.collapsed .card-body { display: none; }
+  .card.collapsed h2 .collapse-chevron { transform: rotate(-90deg); }
+
+  /* ── Sort bar (used in top posts, categories) ── */
+  .sort-bar {
+    display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .sort-btn {
+    padding: 5px 14px; border-radius: 16px;
+    border: 1.5px solid var(--border); background: #fff;
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .sort-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .sort-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .show-more-btn {
+    display: block; width: 100%; margin-top: 12px; padding: 10px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    background: #fff; font-size: 13px; font-weight: 600;
+    color: var(--blue); cursor: pointer; text-align: center;
+    transition: all 0.15s;
+  }
+  .show-more-btn:hover { background: var(--blue-light); border-color: var(--blue); }
+
+  /* ── Content Length Performance cards ── */
+  .length-perf-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  }
+  .length-perf-card {
+    border-radius: 12px; padding: 20px 16px; text-align: center;
+    background: #f8fafc; border: 1px solid var(--border); position: relative;
+  }
+  .length-perf-card.best { background: var(--blue-light); border-color: var(--blue); }
+  .length-perf-card .lp-label { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; }
+  .length-perf-card .lp-value { font-size: 24px; font-weight: 800; color: var(--blue); }
+  .length-perf-card .lp-sub { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+  .length-perf-card .lp-badge {
+    position: absolute; top: -8px; right: -8px;
+    background: var(--blue); color: #fff; font-size: 10px; font-weight: 700;
+    padding: 3px 8px; border-radius: 10px;
+  }
+
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .length-perf-grid { grid-template-columns: repeat(2, 1fr); }
+    .cat-chart-label { width: 100px; font-size: 11px; }
+    .cat-chart-stats { width: 120px; }
+    .section-nav { display: none; }
+  }
+  @media print {
+    body { background: #fff; font-size: 11px; }
+    .header { padding: 20px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .action-bar { display: none !important; }
+    .section-nav { display: none !important; }
+    .filter-bar { display: none !important; }
+    .tab-bar { display: none !important; }
+    .tab-panel { display: block !important; }
+    .card { box-shadow: none; border: 1px solid #e2e8f0; break-inside: avoid; margin-bottom: 14px; padding: 16px; }
+    .card:hover { box-shadow: none; }
+    .stat-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .stat-card:hover { transform: none; }
+    .rank, .cat-pill, .funnel-step { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .insight { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .hook-type, .hook-summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rec-item { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #scatter-tooltip { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="loading">Loading analytics data...</div>
+<div id="app" style="display:none">
+  <div class="header">
+    <h1>LinkedIn Post Analytics</h1>
+    <p id="headerSub"></p>
+    <div class="action-bar">
+      <button id="printBtn">&#x1F5A8; Print / PDF</button>
+      <button id="downloadHtmlBtn">&#x1F4E5; Download Report</button>
+    </div>
+  </div>
+
+  <!-- Section Navigator -->
+  <nav class="section-nav" id="sectionNav"></nav>
+
+  <div class="container">
+    <!-- Time Frame Filter -->
+    <div class="filter-bar" id="filterBar">
+      <span class="filter-label">Time frame:</span>
+      <button class="filter-btn active" data-range="all">All Time</button>
+      <button class="filter-btn" data-range="1">Last Month</button>
+      <button class="filter-btn" data-range="3">Last 3 Months</button>
+      <button class="filter-btn" data-range="6">Last 6 Months</button>
+      <button class="filter-btn" data-range="12">Last Year</button>
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+
+    <div class="stat-grid" id="statCards"></div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-tab="overview">
+        <span class="tab-label"><span class="tab-icon">&#x1F4CA;</span> Overview</span>
+        <span class="tab-desc">High-level stats &amp; charts</span>
+      </button>
+      <button class="tab-btn" data-tab="deep">
+        <span class="tab-label"><span class="tab-icon">&#x1F50D;</span> Deep Analysis</span>
+        <span class="tab-desc">Categories, hooks &amp; patterns</span>
+      </button>
+      <button class="tab-btn" data-tab="writing">
+        <span class="tab-label"><span class="tab-icon">&#x270D;&#xFE0F;</span> Writing Analysis</span>
+        <span class="tab-desc">Voice, style &amp; structure</span>
+      </button>
+    </div>
+
+    <!-- ═══════════ TAB 1: OVERVIEW ═══════════ -->
+    <div class="tab-panel active" id="tabOverview" data-tab="overview">
+
+      <!-- Top Posts (unified, sortable) -->
+      <div class="card" id="topPostsCard" data-nav="&#x1F3C6;" data-nav-label="Top Posts">
+        <h2><span class="icon">&#x1F3C6;</span> Top Posts <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body">
+          <div class="sort-bar" id="topPostsSortBar"></div>
+          <div style="overflow-x:auto"><table id="topPostsTable"><thead><tr>
+            <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Views</th><th style="text-align:right">Likes</th><th style="text-align:right">Comments</th><th style="text-align:right" id="topPostsSortHeader">Eng.</th>
+          </tr></thead><tbody></tbody></table></div>
+          <button class="show-more-btn" id="topPostsShowMore">Show next 10 &#x25BC;</button>
+        </div>
+      </div>
+
+      <!-- Views + Engagement Rate charts -->
+      <div class="two-col" id="viewsChartsRow" data-nav="&#x1F4CA;" data-nav-label="Charts">
+        <div class="card">
+          <h2><span class="icon">&#x1F4CA;</span> Views Distribution <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><div class="chart-container"><canvas id="viewsDistChart"></canvas></div></div>
+        </div>
+        <div class="card">
+          <h2><span class="icon">&#x26A1;</span> Engagement Rate Distribution <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><p class="subtitle">Engagement / Views %</p>
+          <div class="chart-container"><canvas id="engRateChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Missing views diagnostic -->
+      <div class="card" id="missingViewsCard" style="display:none;">
+        <h2><span class="icon">&#x1F50D;</span> Posts With Missing View Data <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">These posts had no impressions/views data scraped. Click to check them on LinkedIn. <span id="missingDebugHint" style="display:none;">Debug classes found in the DOM are shown to help diagnose the issue.</span></p>
+        <div style="overflow-x:auto"><table id="missingViewsTable"><thead><tr>
+          <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Likes</th><th style="text-align:right">Comments</th><th>Debug Info</th>
+        </tr></thead><tbody></tbody></table></div></div>
+      </div>
+
+      <!-- Engagement + Length charts -->
+      <div class="two-col" id="engLenRow" data-nav="&#x1F4C8;" data-nav-label="Eng. & Length">
+        <div class="card">
+          <h2><span class="icon">&#x1F4C8;</span> Engagement Distribution <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><div class="chart-container"><canvas id="engDistChart"></canvas></div></div>
+        </div>
+        <div class="card">
+          <h2><span class="icon">&#x1F4CF;</span> Content Length vs Engagement <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><div class="chart-container"><canvas id="lenEngChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Engagement Trends Chart -->
+      <div class="card" id="trendsCard" data-nav="&#x1F4C8;" data-nav-label="Trends">
+        <h2><span class="icon">&#x1F4C8;</span> Engagement Trend Over Time <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Your engagement trajectory from oldest to newest post.</p>
+        <div class="chart-container"><canvas id="trendChart"></canvas></div></div>
+      </div>
+
+      <!-- Length vs Views + Scatter -->
+      <div class="two-col" id="lenViewsRow">
+        <div class="card">
+          <h2><span class="icon">&#x1F4CF;</span> Content Length vs Views <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><div class="chart-container"><canvas id="lenViewsChart"></canvas></div></div>
+        </div>
+        <div class="card">
+          <h2><span class="icon">&#x1F30D;</span> Views vs Engagement <span class="collapse-chevron">&#x25BC;</span></h2>
+          <div class="card-body"><p class="subtitle">Each dot = one post. Hover for details.</p>
+          <div class="chart-container"><canvas id="viewsEngScatter"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Funnel -->
+      <div class="card" id="funnelCard" data-nav="&#x1F4A7;" data-nav-label="Funnel">
+        <h2><span class="icon">&#x1F4A7;</span> Views-to-Engagement Funnel <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">How your audience converts from viewing to engaging.</p>
+        <div class="funnel" id="funnel"></div></div>
+      </div>
+
+      <!-- Bottom 5 -->
+      <div class="card" id="bottomCard" data-nav="&#x1F4C9;" data-nav-label="Bottom 5">
+        <h2><span class="icon">&#x1F4C9;</span> Bottom 5 Performers <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><div style="overflow-x:auto"><table id="bottomTable"><thead><tr>
+          <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Views</th><th style="text-align:right">Likes</th><th style="text-align:right">Comments</th><th style="text-align:right">Eng.</th>
+        </tr></thead><tbody></tbody></table></div></div>
+      </div>
+
+      <!-- Posting Frequency -->
+      <div class="card" id="freqCard" data-nav="&#x1F4C5;" data-nav-label="Frequency">
+        <h2><span class="icon">&#x1F4C5;</span> Posting Frequency <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><div class="freq-detail" id="frequency"></div></div>
+      </div>
+
+    </div><!-- /tabOverview -->
+
+    <!-- ═══════════ TAB 2: DEEP ANALYSIS ═══════════ -->
+    <div class="tab-panel" id="tabDeep" data-tab="deep">
+
+      <!-- Categories -->
+      <div class="card" id="catCard" data-nav="&#x1F3AF;" data-nav-label="Categories">
+        <h2><span class="icon">&#x1F3AF;</span> Content Categories <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Auto-detected topics from your post content. Posts can belong to multiple categories.</p>
+        <div class="sort-bar" id="catSortBar"></div>
+        <div id="catCharts"></div></div>
+      </div>
+
+      <!-- Hook Pattern Analysis -->
+      <div class="card" id="hookCard" data-nav="&#x1F3A3;" data-nav-label="Hooks">
+        <h2><span class="icon">&#x1F3A3;</span> Hook Pattern Analysis <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">How your opening lines perform, broken down by hook type.</p>
+        <div id="hookAnalysis"></div></div>
+      </div>
+
+      <!-- Hashtag Analysis -->
+      <div class="card" id="hashtagCard" data-nav="#️⃣" data-nav-label="Hashtags">
+        <h2><span class="icon">#️⃣</span> Hashtag Analysis <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Which hashtags drive the most engagement and reach.</p>
+        <div id="hashtagAnalysis"></div></div>
+      </div>
+
+      <!-- Post Structure Analysis -->
+      <div class="card" id="structureCard" data-nav="&#x1F9E9;" data-nav-label="Structure">
+        <h2><span class="icon">&#x1F9E9;</span> Post Structure Analysis <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">How formatting and structure choices affect your engagement.</p>
+        <div id="structureAnalysis"></div></div>
+      </div>
+
+      <!-- Content Length Performance -->
+      <div class="card" id="lengthPerfCard" data-nav="&#x1F4CF;" data-nav-label="Length">
+        <h2><span class="icon">&#x1F4CF;</span> Content Length Performance <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">How your post length affects engagement and reach.</p>
+        <div id="lengthPerfContent"></div></div>
+      </div>
+
+      <!-- Best Time to Post -->
+      <div class="card" id="timingCard" data-nav="&#x23F0;" data-nav-label="Timing">
+        <h2><span class="icon">&#x23F0;</span> Best Time to Post <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Posting timing insights based on your data and LinkedIn best practices.</p>
+        <div id="timingAnalysis"></div></div>
+      </div>
+
+      <!-- Content Calendar -->
+      <div class="card" id="calendarCard" data-nav="&#x1F5D3;" data-nav-label="Calendar">
+        <h2><span class="icon">&#x1F5D3;</span> Suggested Content Calendar <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">A weekly posting plan based on your best-performing topics, hooks, and cadence.</p>
+        <div id="contentCalendar"></div></div>
+      </div>
+
+      <!-- Content & Post Insights -->
+      <div class="card" id="insightsCard" data-nav="&#x1F4A1;" data-nav-label="Insights">
+        <h2><span class="icon">&#x1F4A1;</span> Content &amp; Post Insights <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><div class="insight-list" id="insights"></div></div>
+      </div>
+
+      <!-- Expert Recommendations -->
+      <div class="card" id="recsCard" data-nav="&#x1F4BC;" data-nav-label="Recommendations">
+        <h2><span class="icon">&#x1F4BC;</span> Expert Recommendations <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Data-driven tips based on your posting patterns and performance.</p>
+        <div class="rec-list" id="recommendations"></div></div>
+      </div>
+
+      <!-- Repurpose -->
+      <div class="card" id="repurposeCard" data-nav="&#x267B;" data-nav-label="Repurpose">
+        <h2><span class="icon">&#x267B;</span> Repurpose Candidates <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">High-engagement posts from 2+ months ago worth rewriting.</p>
+        <div style="overflow-x:auto"><table id="repurposeTable"><thead><tr>
+          <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Views</th><th style="text-align:right">Eng.</th>
+        </tr></thead><tbody></tbody></table></div></div>
+      </div>
+
+      <!-- Share Summary -->
+      <div class="card" id="shareCard" data-nav="&#x1F4E4;" data-nav-label="Share">
+        <h2><span class="icon">&#x1F4E4;</span> Share Your Results <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Copy your analytics summary to share on LinkedIn or with your team.</p>
+        <div class="share-box" id="shareSummaryText"></div>
+        <div class="share-actions">
+          <button class="share-btn-primary" id="copyShareBtn">&#x1F4CB; Copy to Clipboard</button>
+          <button class="share-btn-outline" id="shareLinkedInBtn">&#x1F310; Share on LinkedIn</button>
+          <span class="copied-msg" id="copiedMsg">&#x2705; Copied!</span>
+        </div></div>
+      </div>
+
+    </div><!-- /tabDeep -->
+
+    <!-- ═══════════ TAB 3: WRITING ANALYSIS ═══════════ -->
+    <div class="tab-panel" id="tabWriting" data-tab="writing">
+
+      <!-- Writing Style Profile -->
+      <div class="card" id="styleCard" data-nav="&#x270D;" data-nav-label="Style">
+        <h2><span class="icon">&#x270D;</span> Writing Style Profile <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">Deep analysis of your writing patterns, voice, and what makes your content uniquely yours. Only posts with 100+ words are analysed.</p>
+        <div id="styleAnalysis"></div></div>
+      </div>
+
+    </div><!-- /tabWriting -->
+
+  </div>
+</div>
+
+<script src="analyze.js"></script>
+</body>
+</html>
