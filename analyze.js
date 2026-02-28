@@ -1377,6 +1377,675 @@
     container.innerHTML = html;
   }
 
+  // ── Growth & Coaching ────────────────────────────────────────────
+  function renderCoaching(posts, hasViews) {
+    var container = document.getElementById('coachingAnalysis');
+    if (!container) return;
+
+    var qual = posts.filter(function(p) { return p.text && wc(p.text) >= 100; });
+    if (qual.length < 5) {
+      container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px;">Not enough substantive posts (100+ words) for coaching analysis. Found ' + qual.length + ' \u2014 need at least 5.</p>';
+      return;
+    }
+
+    var avgE = qual.reduce(function(s,p){return s+eng(p);},0) / qual.length;
+    var topQ = qual.slice().sort(function(a,b){return eng(b)-eng(a);});
+    var top25 = topQ.slice(0, Math.max(5, Math.ceil(qual.length * 0.25)));
+    var bot25 = topQ.slice(Math.floor(qual.length * 0.75));
+
+    // ── Per-post trait helpers ──
+    function getClosingType(p) {
+      var lines = (p.text||'').trim().split(/\n/).filter(function(l){return l.trim();});
+      if (lines.length === 0) return 'Summary Close';
+      var last = lines[lines.length-1].trim();
+      var last2 = lines.length > 1 ? lines[lines.length-2].trim() + ' ' + last : last;
+      if (/\?\s*$/.test(last)) return 'Question Close';
+      if (/\b(share|comment|follow|tag|let me know|tell me|what do you|drop a|hit me)\b/i.test(last2)) return 'Call to Action';
+      if (/^[A-Z]/.test(last) && last.length < 80 && !/[,;]/.test(last)) return 'Forward-Looking Declaration';
+      return 'Summary Close';
+    }
+    function getTraits(p) {
+      var t = p.text || '';
+      return {
+        hookType: p._hookType || 'Statement',
+        closingType: getClosingType(p),
+        categories: p._categories || ['Other'],
+        wordCount: wc(t),
+        hasLineBreaks: t.split(/\n/).filter(function(l){return l.trim();}).length >= 5,
+        hasList: /^[\s]*[\-\u2022\u25CF\u25CB\u2023\u2043\u25AA\u25A0\u25BA\u25B8]|\d+[.)]\s/m.test(t),
+        hasData: /\d{2,}[%$]|\$[\d,]+|\d+x|\d+ ?(percent|million|billion|thousand)/i.test(t),
+        hasStory: /\b(I |my |when I|years? ago|back in|I remember|true story)/i.test(t),
+        hasAnalogy: /\b(like a|it's like|think of it|imagine|same way|just as)\b/i.test(t),
+        hasRhetoric: (t.match(/\?/g) || []).length >= 2,
+        hasQuestion: /\?/.test(t)
+      };
+    }
+
+    // Enrich all qualified posts with traits
+    var traits = [];
+    qual.forEach(function(p) { p._traits = getTraits(p); traits.push(p._traits); });
+
+    // Helper: quote a post with metrics
+    function rq(p, text, note) {
+      var h = '<div class="report-quote">\u201C' + esc(text) + '\u201D';
+      h += '<span class="rq-metric"> \u2014 ';
+      if (hasViews && views(p) > 0) h += fmt(views(p)) + ' views, ';
+      h += eng(p) + ' engagement</span>';
+      if (note) h += '<span class="rq-note">' + esc(note) + '</span>';
+      h += '</div>';
+      return h;
+    }
+    function firstSentences(text, n) {
+      var s = text.split(/(?<=[.!?])\s+/).slice(0, n || 2);
+      return s.join(' ').substring(0, 250) + (s.join(' ').length > 250 ? '...' : '');
+    }
+
+    // ── Compute shared analysis data ──
+
+    // Hook analysis
+    var hookMap = {};
+    qual.forEach(function(p) {
+      var t = p._traits.hookType;
+      if (!hookMap[t]) hookMap[t] = [];
+      hookMap[t].push(p);
+    });
+    var hookTypes = Object.keys(hookMap);
+    var bestHook = hookTypes.slice().sort(function(a,b) {
+      return (hookMap[b].reduce(function(s,p){return s+eng(p);},0)/hookMap[b].length) -
+             (hookMap[a].reduce(function(s,p){return s+eng(p);},0)/hookMap[a].length);
+    })[0] || 'Statement';
+    var mostUsedHook = hookTypes.slice().sort(function(a,b) { return hookMap[b].length - hookMap[a].length; })[0] || 'Statement';
+    var bestHookAvg = hookMap[bestHook] ? hookMap[bestHook].reduce(function(s,p){return s+eng(p);},0)/hookMap[bestHook].length : avgE;
+    var mostUsedHookAvg = hookMap[mostUsedHook] ? hookMap[mostUsedHook].reduce(function(s,p){return s+eng(p);},0)/hookMap[mostUsedHook].length : avgE;
+
+    // Category analysis
+    var catMap = {};
+    qual.forEach(function(p) {
+      (p._categories || ['Other']).forEach(function(c) {
+        if (!catMap[c]) catMap[c] = [];
+        catMap[c].push(p);
+      });
+    });
+    var catNames = Object.keys(catMap).filter(function(c){return catMap[c].length >= 3;});
+    var bestCat = catNames.slice().sort(function(a,b) {
+      return (catMap[b].reduce(function(s,p){return s+eng(p);},0)/catMap[b].length) -
+             (catMap[a].reduce(function(s,p){return s+eng(p);},0)/catMap[a].length);
+    })[0] || 'Other';
+    var mostPostedCat = catNames.slice().sort(function(a,b) { return catMap[b].length - catMap[a].length; })[0] || 'Other';
+
+    // Closing analysis
+    var closeMap = {};
+    qual.forEach(function(p) {
+      var ct = p._traits.closingType;
+      if (!closeMap[ct]) closeMap[ct] = [];
+      closeMap[ct].push(p);
+    });
+    var closeTypes = Object.keys(closeMap).filter(function(c){return closeMap[c].length >= 2;});
+    var bestClose = closeTypes.slice().sort(function(a,b) {
+      return (closeMap[b].reduce(function(s,p){return s+eng(p);},0)/closeMap[b].length) -
+             (closeMap[a].reduce(function(s,p){return s+eng(p);},0)/closeMap[a].length);
+    })[0] || 'Summary Close';
+    var mostUsedClose = closeTypes.slice().sort(function(a,b) { return closeMap[b].length - closeMap[a].length; })[0] || 'Summary Close';
+
+    // Length brackets
+    var lenBrackets = [
+      { label: 'Short', min: 0, max: 150 },
+      { label: 'Medium', min: 150, max: 300 },
+      { label: 'Long', min: 300, max: 500 },
+      { label: 'Very Long', min: 500, max: Infinity }
+    ];
+    var bestLen = lenBrackets.slice().sort(function(a,b) {
+      var aPosts = qual.filter(function(p){var w=wc(p.text);return w>=a.min&&w<a.max;});
+      var bPosts = qual.filter(function(p){var w=wc(p.text);return w>=b.min&&w<b.max;});
+      var aAvg = aPosts.length>=3 ? aPosts.reduce(function(s,p){return s+eng(p);},0)/aPosts.length : 0;
+      var bAvg = bPosts.length>=3 ? bPosts.reduce(function(s,p){return s+eng(p);},0)/bPosts.length : 0;
+      return bAvg - aAvg;
+    })[0];
+
+    // Frequency
+    var monthsArr = qual.map(function(p){return dateToMonths(p.date);});
+    var maxM = Math.max.apply(null, monthsArr.concat([1]));
+    var pw = maxM > 0 ? (posts.length / maxM) / 4.33 : posts.length;
+
+    // Comment ratio
+    var totalLikes = qual.reduce(function(s,p){return s+(p.likes||0);},0);
+    var totalComments = qual.reduce(function(s,p){return s+(p.comments||0);},0);
+    var commentRatio = totalLikes > 0 ? totalComments / totalLikes : 0;
+
+    var html = '<div class="report">';
+
+    // ── Meta ──
+    html += '<div class="report-meta">';
+    html += '<strong>' + qual.length + ' posts analysed</strong> (100+ words) out of ' + posts.length + ' total';
+    html += ' &middot; Avg engagement: <strong>' + avgE.toFixed(0) + '</strong>';
+    html += ' &middot; Top 25%: <strong>' + top25.length + ' posts</strong> averaging ' + Math.round(top25.reduce(function(s,p){return s+eng(p);},0)/top25.length) + ' engagement';
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 1. YOUR BIGGEST LEVER RIGHT NOW
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>1. Your Biggest Lever Right Now</h3>';
+
+    var levers = [];
+    // Hook gap
+    if (bestHook !== mostUsedHook && mostUsedHookAvg > 0) {
+      var hookGap = Math.round((bestHookAvg - mostUsedHookAvg) / mostUsedHookAvg * 100);
+      if (hookGap > 5) levers.push({ name: 'hook', gap: hookGap, desc: 'Your best-performing hook type is <strong>' + esc(bestHook) + '</strong> (avg ' + Math.round(bestHookAvg) + ' engagement), but you mostly use <strong>' + esc(mostUsedHook) + '</strong> hooks (avg ' + Math.round(mostUsedHookAvg) + '). If your next 10 posts used ' + esc(bestHook) + ' openers, your data suggests roughly <strong>+' + hookGap + '% more engagement per post</strong>.' });
+    }
+    // Topic gap
+    if (bestCat !== mostPostedCat && catMap[bestCat] && catMap[mostPostedCat]) {
+      var bestCatAvg = catMap[bestCat].reduce(function(s,p){return s+eng(p);},0)/catMap[bestCat].length;
+      var mostCatAvg = catMap[mostPostedCat].reduce(function(s,p){return s+eng(p);},0)/catMap[mostPostedCat].length;
+      var topicGap = mostCatAvg > 0 ? Math.round((bestCatAvg - mostCatAvg) / mostCatAvg * 100) : 0;
+      if (topicGap > 10) levers.push({ name: 'topic', gap: topicGap, desc: 'Your <strong>' + esc(bestCat) + '</strong> posts average ' + Math.round(bestCatAvg) + ' engagement, but you post most about <strong>' + esc(mostPostedCat) + '</strong> (avg ' + Math.round(mostCatAvg) + '). Shifting more content toward ' + esc(bestCat) + ' could lift engagement by roughly <strong>+' + topicGap + '%</strong>.' });
+    }
+    // Closing gap
+    if (bestClose !== mostUsedClose && closeMap[bestClose] && closeMap[mostUsedClose]) {
+      var bestCloseAvg = closeMap[bestClose].reduce(function(s,p){return s+eng(p);},0)/closeMap[bestClose].length;
+      var mostCloseAvg = closeMap[mostUsedClose].reduce(function(s,p){return s+eng(p);},0)/closeMap[mostUsedClose].length;
+      var closeGap = mostCloseAvg > 0 ? Math.round((bestCloseAvg - mostCloseAvg) / mostCloseAvg * 100) : 0;
+      if (closeGap > 5) levers.push({ name: 'closing', gap: closeGap, desc: 'Your <strong>' + esc(bestClose) + '</strong> endings average ' + Math.round(bestCloseAvg) + ' engagement vs your default <strong>' + esc(mostUsedClose) + '</strong> at ' + Math.round(mostCloseAvg) + '. Switching your closing pattern could add roughly <strong>+' + closeGap + '%</strong>.' });
+    }
+    // Cadence gap
+    if (pw < 3) {
+      var cadenceGap = Math.round((3 - pw) / Math.max(pw, 0.1) * 100);
+      levers.push({ name: 'cadence', gap: Math.min(cadenceGap, 200), desc: 'You\u2019re posting <strong>' + pw.toFixed(1) + ' times per week</strong>. Top LinkedIn creators post 3\u20135x per week. The algorithm heavily rewards consistency \u2014 increasing to 3x/week could significantly boost your reach and follower growth.' });
+    }
+    // Comment ratio gap
+    if (commentRatio < 0.25 && totalLikes > 50) {
+      var crGap = Math.round((0.25 - commentRatio) / Math.max(commentRatio, 0.01) * 100);
+      levers.push({ name: 'comments', gap: Math.min(crGap, 150), desc: 'Your comment-to-like ratio is <strong>' + (commentRatio * 100).toFixed(1) + '%</strong>. High-performing LinkedIn creators typically see 25%+. Comments signal quality to the algorithm and drive 3\u201310x more distribution than likes alone.' });
+    }
+
+    levers.sort(function(a,b) { return b.gap - a.gap; });
+
+    if (levers.length > 0) {
+      html += '<p class="report-prose"><strong>Focus here first.</strong> Of everything in this report, this is the single change most likely to move the needle:</p>';
+      html += '<div class="report-callout"><h4>\uD83C\uDFAF ' + esc(levers[0].name.charAt(0).toUpperCase() + levers[0].name.slice(1)) + ' Improvement</h4>';
+      html += '<p>' + levers[0].desc + '</p></div>';
+      if (levers.length > 1) {
+        html += '<p class="report-prose" style="margin-top:16px;">Other high-impact levers to address after:</p>';
+        html += '<ul class="report-avoid-list">';
+        for (var li = 1; li < Math.min(levers.length, 4); li++) {
+          html += '<li>' + levers[li].desc + '</li>';
+        }
+        html += '</ul>';
+      }
+    } else {
+      html += '<p class="report-prose">Your content is well-optimised across hooks, topics, and structure. The focus should be on experimenting with new formats and increasing posting frequency.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 2. POST AUTOPSIES
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>2. Post Autopsies \u2014 Why Your Bottom Posts Failed</h3>';
+
+    if (bot25.length >= 3) {
+      var failGroups = {
+        'Weak hook type': [],
+        'Low-performing topic': [],
+        'Wrong length': [],
+        'Missing structure': [],
+        'Other factors': []
+      };
+
+      // Find the weakest hook types (below average)
+      var weakHooks = {};
+      hookTypes.forEach(function(ht) {
+        var avg = hookMap[ht].reduce(function(s,p){return s+eng(p);},0)/hookMap[ht].length;
+        if (avg < avgE * 0.85) weakHooks[ht] = true;
+      });
+
+      // Find weakest categories
+      var weakCats = {};
+      catNames.forEach(function(cn) {
+        var avg = catMap[cn].reduce(function(s,p){return s+eng(p);},0)/catMap[cn].length;
+        if (avg < avgE * 0.85) weakCats[cn] = true;
+      });
+
+      // Optimal length range
+      var optLenPosts = qual.filter(function(p){var w=wc(p.text);return w>=bestLen.min&&w<bestLen.max;});
+      var optLenAvg = optLenPosts.length>0 ? optLenPosts.reduce(function(s,p){return s+eng(p);},0)/optLenPosts.length : avgE;
+
+      bot25.forEach(function(p) {
+        var diagnosed = false;
+        if (weakHooks[p._traits.hookType]) { failGroups['Weak hook type'].push(p); diagnosed = true; }
+        var pCats = p._categories || ['Other'];
+        var inWeakCat = pCats.some(function(c){return weakCats[c];});
+        if (inWeakCat && !diagnosed) { failGroups['Low-performing topic'].push(p); diagnosed = true; }
+        var w = wc(p.text);
+        if ((w < bestLen.min || w >= bestLen.max) && Math.abs(w - (bestLen.min+bestLen.max)/2) > 100 && !diagnosed) { failGroups['Wrong length'].push(p); diagnosed = true; }
+        if (!p._traits.hasLineBreaks && !diagnosed) { failGroups['Missing structure'].push(p); diagnosed = true; }
+        if (!diagnosed) failGroups['Other factors'].push(p);
+      });
+
+      var failKeys = Object.keys(failGroups).filter(function(k){return failGroups[k].length > 0;});
+      html += '<p class="report-prose">Your bottom ' + bot25.length + ' posts by engagement share identifiable problems. Here\u2019s what went wrong and why:</p>';
+
+      failKeys.forEach(function(reason) {
+        var fp = failGroups[reason];
+        if (fp.length === 0) return;
+        html += '<div class="report-subsection"><h4>' + reason + ' (' + fp.length + ' posts)</h4>';
+
+        if (reason === 'Weak hook type') {
+          html += '<p class="report-prose">These posts opened with hook types that consistently underperform for your audience. Your data shows that <strong>' + esc(bestHook) + '</strong> hooks get the best response, but these used weaker openers:</p>';
+        } else if (reason === 'Low-performing topic') {
+          html += '<p class="report-prose">These posts cover topics that don\u2019t resonate as strongly with your audience. Your <strong>' + esc(bestCat) + '</strong> content outperforms these topics significantly:</p>';
+        } else if (reason === 'Wrong length') {
+          html += '<p class="report-prose">These posts missed your optimal length range (' + bestLen.label + ': ' + bestLen.min + '\u2013' + (bestLen.max === Infinity ? '500+' : bestLen.max) + ' words). Your best engagement comes from posts in that sweet spot:</p>';
+        } else if (reason === 'Missing structure') {
+          html += '<p class="report-prose">These posts lack the visual structure (line breaks, white space) that your top posts use. On mobile, dense text walls get scrolled past:</p>';
+        } else {
+          html += '<p class="report-prose">These posts didn\u2019t fit a single failure pattern but underperformed nonetheless:</p>';
+        }
+
+        var exCount = Math.min(3, fp.length);
+        for (var i = 0; i < exCount; i++) {
+          var diag = '';
+          if (reason === 'Weak hook type') diag = 'Used a ' + fp[i]._traits.hookType + ' hook';
+          else if (reason === 'Wrong length') diag = wc(fp[i].text) + ' words (outside your ' + bestLen.label.toLowerCase() + ' sweet spot)';
+          else if (reason === 'Missing structure') diag = 'Only ' + fp[i].text.split(/\n/).filter(function(l){return l.trim();}).length + ' visible lines';
+          html += rq(fp[i], firstSentences(fp[i].text, 2), diag);
+        }
+        html += '</div>';
+      });
+    } else {
+      html += '<p class="report-prose">Not enough posts in the bottom quartile for a meaningful autopsy. Keep posting and check back when you have more data.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 3. YOUR UNDERUSED WEAPONS
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>3. Your Underused Weapons</h3>';
+    html += '<p class="report-prose">These are techniques that <strong>work well for you but you rarely use</strong>. They\u2019re the easiest wins because you\u2019ve already proven you can do them:</p>';
+
+    var weapons = [];
+
+    // Underused hook types
+    hookTypes.forEach(function(ht) {
+      var hp = hookMap[ht];
+      var pct = hp.length / qual.length * 100;
+      var avg = hp.reduce(function(s,p){return s+eng(p);},0)/hp.length;
+      if (avg > avgE * 1.1 && pct < 15 && hp.length >= 2) {
+        weapons.push({ type: 'hook', name: esc(ht) + ' hooks', pct: Math.round(pct), avgEng: Math.round(avg), lift: Math.round((avg - avgE)/avgE*100), best: hp.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+      }
+    });
+
+    // Underused categories
+    catNames.forEach(function(cn) {
+      var cp = catMap[cn];
+      var pct = cp.length / qual.length * 100;
+      var avg = cp.reduce(function(s,p){return s+eng(p);},0)/cp.length;
+      if (avg > avgE * 1.15 && pct < 12 && cp.length >= 3) {
+        weapons.push({ type: 'topic', name: esc(cn) + ' content', pct: Math.round(pct), avgEng: Math.round(avg), lift: Math.round((avg - avgE)/avgE*100), best: cp.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+      }
+    });
+
+    // Underused structural patterns
+    var structPatterns = [
+      { name: 'Data-driven posts', posts: qual.filter(function(p){return p._traits.hasData;}), label: 'posts with specific numbers/data' },
+      { name: 'Story-led posts', posts: qual.filter(function(p){return p._traits.hasStory;}), label: 'posts that open with personal experience' },
+      { name: 'Analogy posts', posts: qual.filter(function(p){return p._traits.hasAnalogy;}), label: 'posts using analogies and comparisons' },
+      { name: 'Rhetorical question posts', posts: qual.filter(function(p){return p._traits.hasRhetoric;}), label: 'posts with multiple rhetorical questions' }
+    ];
+    structPatterns.forEach(function(sp) {
+      var pct = sp.posts.length / qual.length * 100;
+      var avg = sp.posts.length>=3 ? sp.posts.reduce(function(s,p){return s+eng(p);},0)/sp.posts.length : 0;
+      if (avg > avgE * 1.1 && pct < 20 && sp.posts.length >= 3) {
+        weapons.push({ type: 'structure', name: sp.name, pct: Math.round(pct), avgEng: Math.round(avg), lift: Math.round((avg - avgE)/avgE*100), best: sp.posts.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+      }
+    });
+
+    // Underused closing types
+    closeTypes.forEach(function(ct) {
+      var cp = closeMap[ct];
+      var pct = cp.length / qual.length * 100;
+      var avg = cp.reduce(function(s,p){return s+eng(p);},0)/cp.length;
+      if (avg > avgE * 1.1 && pct < 15 && cp.length >= 2) {
+        weapons.push({ type: 'closing', name: esc(ct), pct: Math.round(pct), avgEng: Math.round(avg), lift: Math.round((avg - avgE)/avgE*100), best: cp.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+      }
+    });
+
+    weapons.sort(function(a,b) { return b.lift - a.lift; });
+
+    if (weapons.length > 0) {
+      weapons.slice(0, 6).forEach(function(w) {
+        html += '<div class="report-subsection"><h4>' + w.name + '</h4>';
+        html += '<p class="report-prose">You only use this in <strong>' + w.pct + '%</strong> of posts, but when you do it averages <strong>' + w.avgEng + ' engagement</strong> \u2014 <strong>+' + w.lift + '% above your average</strong>. This is a proven technique you should use more:</p>';
+        if (w.best) html += rq(w.best, firstSentences(w.best.text, 2), 'Your best example of this working');
+        html += '</div>';
+      });
+    } else {
+      html += '<p class="report-prose">Your technique usage is well-distributed \u2014 there are no major underused patterns. Focus on consistency and experimentation with new formats instead.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 4. REWRITES
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>4. Rewrites \u2014 Your Weakest Posts, Rebuilt</h3>';
+    html += '<p class="report-prose">Here are specific posts from your bottom quartile with concrete suggestions for how they could perform better, using patterns from your own top-performing content:</p>';
+
+    var rewriteCandidates = bot25.filter(function(p) {
+      return p._traits.hookType !== bestHook || p._traits.closingType !== bestClose || !p._traits.hasLineBreaks;
+    }).slice(0, 5);
+
+    if (rewriteCandidates.length > 0) {
+      rewriteCandidates.forEach(function(p, idx) {
+        var fixes = [];
+        var origHook = firstSentences(p.text, 1);
+
+        // Hook fix
+        if (p._traits.hookType !== bestHook && HOOK_TEMPLATES[bestHook]) {
+          var templates = HOOK_TEMPLATES[bestHook];
+          var templateIdx = idx % templates.length;
+          fixes.push({ label: 'Hook', current: 'Uses a ' + p._traits.hookType + ' opener (your weakest type)', suggestion: 'Rewrite as a ' + bestHook + ' hook. Template: <em>\u201C' + esc(templates[templateIdx]) + '\u201D</em>' });
+        }
+
+        // Structure fix
+        if (!p._traits.hasLineBreaks) {
+          var lineCount = p.text.split(/\n/).filter(function(l){return l.trim();}).length;
+          fixes.push({ label: 'Structure', current: 'Only ' + lineCount + ' visible lines \u2014 reads as a dense block on mobile', suggestion: 'Break into single-sentence paragraphs with blank lines between. Your top posts average 5+ visible line breaks.' });
+        }
+
+        // Closing fix
+        if (p._traits.closingType !== bestClose) {
+          var lines = p.text.trim().split(/\n/).filter(function(l){return l.trim();});
+          var lastLine = lines.length > 0 ? lines[lines.length-1] : '';
+          fixes.push({ label: 'Closing', current: 'Ends with a ' + p._traits.closingType + ' (\u201C' + esc(trunc(lastLine, 60)) + '\u201D)', suggestion: 'Your best-performing closing type is <strong>' + esc(bestClose) + '</strong>. ' + (bestClose === 'Question Close' ? 'End with a direct question to the reader that invites them to share their experience.' : bestClose === 'Call to Action' ? 'End with a specific action the reader can take right now.' : bestClose === 'Forward-Looking Declaration' ? 'End with a short, punchy declaration \u2014 one sentence, under 80 characters.' : 'Wrap up with a clear takeaway or reflection.') });
+        }
+
+        // Length fix
+        var w = wc(p.text);
+        if (w < bestLen.min && bestLen.min > 0) {
+          fixes.push({ label: 'Length', current: w + ' words (below your optimal range)', suggestion: 'Expand to ' + bestLen.min + '\u2013' + (bestLen.max === Infinity ? '500+' : bestLen.max) + ' words. Add a specific example, a data point, or a personal story to develop the argument.' });
+        } else if (w >= bestLen.max && bestLen.max < Infinity) {
+          fixes.push({ label: 'Length', current: w + ' words (above your optimal range)', suggestion: 'Trim to ' + bestLen.min + '\u2013' + bestLen.max + ' words. Cut the throat-clearing intro and any repeated points.' });
+        }
+
+        if (fixes.length > 0) {
+          html += '<div class="report-subsection"><h4>Post #' + (idx + 1) + '</h4>';
+          html += rq(p, firstSentences(p.text, 2));
+          html += '<table style="width:100%;border-collapse:collapse;margin:12px 0 8px;">';
+          fixes.forEach(function(f) {
+            html += '<tr style="border-bottom:1px solid #e2e8f0;">';
+            html += '<td style="padding:8px 10px;font-weight:700;color:#64748b;font-size:12px;text-transform:uppercase;vertical-align:top;width:70px;">' + f.label + '</td>';
+            html += '<td style="padding:8px 0;font-size:13px;color:#dc2626;">\u2718 ' + f.current + '</td>';
+            html += '</tr><tr style="border-bottom:1px solid #e2e8f0;">';
+            html += '<td style="padding:8px 10px;"></td>';
+            html += '<td style="padding:8px 0;font-size:13px;color:#16a34a;">\u2714 ' + f.suggestion + '</td>';
+            html += '</tr>';
+          });
+          html += '</table></div>';
+        }
+      });
+    } else {
+      html += '<p class="report-prose">Your bottom posts don\u2019t have obvious structural fixes \u2014 they may be underperforming due to timing or topic choice rather than writing quality.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 5. ENGAGEMENT FLYWHEEL — WHAT COMPOUNDS
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>5. Your Engagement Flywheel \u2014 What Compounds</h3>';
+    html += '<p class="report-prose">Individual tactics matter, but <strong>combinations</strong> multiply engagement. Here are the specific recipes that work best for you:</p>';
+
+    var combos = [];
+    // Hook x Topic combos
+    hookTypes.forEach(function(ht) {
+      catNames.forEach(function(cn) {
+        var combo = qual.filter(function(p) { return p._traits.hookType === ht && (p._categories||[]).indexOf(cn) !== -1; });
+        if (combo.length >= 3) {
+          var avg = combo.reduce(function(s,p){return s+eng(p);},0)/combo.length;
+          combos.push({ label: esc(ht) + ' hook + ' + esc(cn), count: combo.length, avgEng: avg, lift: Math.round((avg - avgE)/avgE*100), best: combo.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+        }
+      });
+    });
+    // Hook x Closing combos
+    hookTypes.forEach(function(ht) {
+      closeTypes.forEach(function(ct) {
+        var combo = qual.filter(function(p) { return p._traits.hookType === ht && p._traits.closingType === ct; });
+        if (combo.length >= 3) {
+          var avg = combo.reduce(function(s,p){return s+eng(p);},0)/combo.length;
+          combos.push({ label: esc(ht) + ' hook + ' + esc(ct), count: combo.length, avgEng: avg, lift: Math.round((avg - avgE)/avgE*100), best: combo.slice().sort(function(a,b){return eng(b)-eng(a);})[0] });
+        }
+      });
+    });
+
+    combos.sort(function(a,b) { return b.avgEng - a.avgEng; });
+
+    var topCombos = combos.slice(0, 3);
+    var botCombos = combos.length > 3 ? combos.slice(-3).reverse() : [];
+
+    if (topCombos.length > 0) {
+      html += '<div class="report-subsection"><h4>Your Winning Recipes</h4>';
+      topCombos.forEach(function(c) {
+        html += '<p class="report-prose"><strong>' + c.label + '</strong> \u2014 ' + c.count + ' posts, avg engagement ' + Math.round(c.avgEng) + ' (<strong>' + (c.lift >= 0 ? '+' : '') + c.lift + '% vs average</strong>).</p>';
+        if (c.best) html += rq(c.best, firstSentences(c.best.text, 2));
+      });
+      html += '</div>';
+    }
+
+    if (botCombos.length > 0) {
+      html += '<div class="report-subsection"><h4>Combinations to Avoid</h4>';
+      html += '<ul class="report-avoid-list">';
+      botCombos.forEach(function(c) {
+        html += '<li><strong>' + c.label + '</strong> \u2014 ' + c.count + ' posts, avg engagement ' + Math.round(c.avgEng) + ' (' + (c.lift >= 0 ? '+' : '') + c.lift + '% vs average)</li>';
+      });
+      html += '</ul></div>';
+    }
+
+    if (combos.length === 0) {
+      html += '<p class="report-prose">Not enough data for combo analysis yet. As you build up more posts across different hook types and topics, patterns will emerge here.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 6. THE COMMENT MULTIPLIER
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>6. The Comment Multiplier</h3>';
+    html += '<p class="report-prose">Comments are the highest-value engagement signal on LinkedIn \u2014 they drive 3\u201310x more algorithmic distribution than likes. Here\u2019s how to get more of them:</p>';
+
+    var postsWithComments = qual.filter(function(p){return (p.likes||0) > 0;});
+    if (postsWithComments.length >= 10) {
+      var medianCR = median(postsWithComments.map(function(p){return (p.comments||0)/(p.likes||1);}));
+      var highCR = postsWithComments.filter(function(p){return (p.comments||0)/(p.likes||1) > medianCR;});
+      var lowCR = postsWithComments.filter(function(p){return (p.comments||0)/(p.likes||1) <= medianCR;});
+
+      // What high-comment posts do differently
+      var highQClose = highCR.filter(function(p){return p._traits.closingType === 'Question Close';}).length;
+      var lowQClose = lowCR.filter(function(p){return p._traits.closingType === 'Question Close';}).length;
+      var highRhetoric = highCR.filter(function(p){return p._traits.hasRhetoric;}).length;
+      var lowRhetoric = lowCR.filter(function(p){return p._traits.hasRhetoric;}).length;
+      var highStory = highCR.filter(function(p){return p._traits.hasStory;}).length;
+      var lowStory = lowCR.filter(function(p){return p._traits.hasStory;}).length;
+
+      html += '<div class="report-subsection"><h4>What Drives Comments for You</h4>';
+      html += '<ul class="report-sig-list">';
+      if (highCR.length > 0) {
+        var qClosePctHigh = Math.round(highQClose/highCR.length*100);
+        var qClosePctLow = Math.round(lowQClose/lowCR.length*100);
+        if (qClosePctHigh > qClosePctLow + 10) {
+          html += '<li><strong>Question closes</strong> \u2014 ' + qClosePctHigh + '% of your high-comment posts end with a question vs ' + qClosePctLow + '% of low-comment posts</li>';
+        }
+        var rhetPctHigh = Math.round(highRhetoric/highCR.length*100);
+        var rhetPctLow = Math.round(lowRhetoric/lowCR.length*100);
+        if (rhetPctHigh > rhetPctLow + 10) {
+          html += '<li><strong>Multiple questions throughout</strong> \u2014 ' + rhetPctHigh + '% of high-comment posts use 2+ questions vs ' + rhetPctLow + '% of low-comment posts</li>';
+        }
+        var storyPctHigh = Math.round(highStory/highCR.length*100);
+        var storyPctLow = Math.round(lowStory/lowCR.length*100);
+        if (storyPctHigh > storyPctLow + 10) {
+          html += '<li><strong>Personal stories</strong> \u2014 ' + storyPctHigh + '% of high-comment posts include personal experience vs ' + storyPctLow + '% of low-comment posts. Stories invite people to share their own.</li>';
+        }
+      }
+      html += '</ul></div>';
+
+      // Best comment-generating closing lines
+      var byComments = qual.slice().sort(function(a,b){return (b.comments||0)-(a.comments||0);});
+      var topCommentPosts = byComments.slice(0, 3);
+      if (topCommentPosts.length > 0) {
+        html += '<div class="report-subsection"><h4>Your Best Comment-Generating Closings</h4>';
+        html += '<p class="report-prose">Copy these patterns \u2014 these closing lines drove the most discussion:</p>';
+        topCommentPosts.forEach(function(p) {
+          var lines = p.text.trim().split(/\n/).filter(function(l){return l.trim();});
+          var lastLine = lines.length > 0 ? lines[lines.length-1] : '';
+          html += rq(p, trunc(lastLine, 150), (p.comments||0) + ' comments, ' + (p.likes||0) + ' likes');
+        });
+        html += '</div>';
+      }
+    } else {
+      html += '<p class="report-prose">Need more posts with engagement data to analyse comment patterns. Keep posting and check back later.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 7. GROWTH TRAJECTORY
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>7. Growth Trajectory \u2014 What\u2019s Improving, What\u2019s Stalling</h3>';
+
+    if (qual.length >= 20) {
+      var midIdx = Math.floor(qual.length / 2);
+      // Sort by date (most recent first — assume the array is already date-sorted from scraper)
+      var newerHalf = qual.slice(0, midIdx);
+      var olderHalf = qual.slice(midIdx);
+
+      var newerAvgEng = newerHalf.reduce(function(s,p){return s+eng(p);},0)/newerHalf.length;
+      var olderAvgEng = olderHalf.reduce(function(s,p){return s+eng(p);},0)/olderHalf.length;
+      var engChange = olderAvgEng > 0 ? Math.round((newerAvgEng - olderAvgEng)/olderAvgEng*100) : 0;
+
+      var newerAvgWc = Math.round(newerHalf.reduce(function(s,p){return s+wc(p.text);},0)/newerHalf.length);
+      var olderAvgWc = Math.round(olderHalf.reduce(function(s,p){return s+wc(p.text);},0)/olderHalf.length);
+
+      var newerCR = newerHalf.reduce(function(s,p){return s+(p.comments||0);},0) / Math.max(newerHalf.reduce(function(s,p){return s+(p.likes||0);},0), 1);
+      var olderCR = olderHalf.reduce(function(s,p){return s+(p.comments||0);},0) / Math.max(olderHalf.reduce(function(s,p){return s+(p.likes||0);},0), 1);
+
+      // Hook diversity
+      var newerHooks = {};
+      newerHalf.forEach(function(p){newerHooks[p._traits.hookType]=true;});
+      var olderHooks = {};
+      olderHalf.forEach(function(p){olderHooks[p._traits.hookType]=true;});
+
+      html += '<p class="report-prose">Comparing your most recent ' + newerHalf.length + ' posts against your earlier ' + olderHalf.length + ' posts:</p>';
+
+      var improving = [];
+      var stalling = [];
+
+      // Engagement
+      if (engChange > 10) improving.push('Engagement is <strong>up ' + engChange + '%</strong> (from ' + Math.round(olderAvgEng) + ' to ' + Math.round(newerAvgEng) + ' per post). Your content is resonating more over time.');
+      else if (engChange < -10) stalling.push('Engagement has <strong>dropped ' + Math.abs(engChange) + '%</strong> (from ' + Math.round(olderAvgEng) + ' to ' + Math.round(newerAvgEng) + '). This could signal audience fatigue or a shift in content quality.');
+      else improving.push('Engagement is <strong>stable</strong> (' + Math.round(olderAvgEng) + ' \u2192 ' + Math.round(newerAvgEng) + '). Consistency is good, but look for ways to push higher.');
+
+      // Views
+      if (hasViews) {
+        var newerAvgV = newerHalf.reduce(function(s,p){return s+views(p);},0)/newerHalf.length;
+        var olderAvgV = olderHalf.reduce(function(s,p){return s+views(p);},0)/olderHalf.length;
+        var viewChange = olderAvgV > 0 ? Math.round((newerAvgV - olderAvgV)/olderAvgV*100) : 0;
+        if (viewChange > 15) improving.push('Average views are <strong>up ' + viewChange + '%</strong> (' + fmt(Math.round(olderAvgV)) + ' \u2192 ' + fmt(Math.round(newerAvgV)) + '). Your reach is growing.');
+        else if (viewChange < -15) stalling.push('Average views have <strong>dropped ' + Math.abs(viewChange) + '%</strong> (' + fmt(Math.round(olderAvgV)) + ' \u2192 ' + fmt(Math.round(newerAvgV)) + '). Consider posting more consistently to maintain algorithmic reach.');
+      }
+
+      // Word count evolution
+      if (newerAvgWc > olderAvgWc * 1.15) improving.push('Your posts are getting <strong>longer</strong> (' + olderAvgWc + ' \u2192 ' + newerAvgWc + ' words). You\u2019re developing ideas more fully.');
+      else if (newerAvgWc < olderAvgWc * 0.85) stalling.push('Your posts are getting <strong>shorter</strong> (' + olderAvgWc + ' \u2192 ' + newerAvgWc + ' words). Make sure you\u2019re not sacrificing depth for speed.');
+
+      // Comment ratio
+      if (newerCR > olderCR * 1.15) improving.push('Your comment ratio has <strong>improved</strong> (' + (olderCR*100).toFixed(1) + '% \u2192 ' + (newerCR*100).toFixed(1) + '%). Your content is sparking more discussion.');
+      else if (newerCR < olderCR * 0.85) stalling.push('Your comment ratio has <strong>declined</strong> (' + (olderCR*100).toFixed(1) + '% \u2192 ' + (newerCR*100).toFixed(1) + '%). Try ending more posts with questions to invite replies.');
+
+      // Hook diversity
+      var newerHookCount = Object.keys(newerHooks).length;
+      var olderHookCount = Object.keys(olderHooks).length;
+      if (newerHookCount > olderHookCount) improving.push('You\u2019re using <strong>more hook types</strong> (' + olderHookCount + ' \u2192 ' + newerHookCount + ' types). Variety keeps your audience engaged.');
+      else if (newerHookCount < olderHookCount) stalling.push('Your hook variety has <strong>narrowed</strong> (' + olderHookCount + ' \u2192 ' + newerHookCount + ' types). Experiment with different openers to avoid predictability.');
+
+      if (improving.length > 0) {
+        html += '<div class="report-subsection"><h4>\u2705 What\u2019s Improving</h4><ul class="report-sig-list">';
+        improving.forEach(function(item) { html += '<li>' + item + '</li>'; });
+        html += '</ul></div>';
+      }
+      if (stalling.length > 0) {
+        html += '<div class="report-subsection"><h4>\u26A0\uFE0F What Needs Attention</h4><ul class="report-avoid-list">';
+        stalling.forEach(function(item) { html += '<li>' + item + '</li>'; });
+        html += '</ul></div>';
+      }
+    } else {
+      html += '<p class="report-prose">Need at least 20 qualifying posts to track your growth trajectory. You have ' + qual.length + ' \u2014 keep posting and this section will unlock.</p>';
+    }
+    html += '</div>';
+
+    // ═════════════════════════════════════════════════════════════════
+    // 8. YOUR 30-DAY CHALLENGE
+    // ═════════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>8. Your 30-Day Challenge</h3>';
+    html += '<p class="report-prose">A four-week progressive programme to improve your LinkedIn writing, based on the gaps this analysis has identified. Each week focuses on one specific skill:</p>';
+
+    var targetEng = Math.round(avgE * 1.2);
+    var targetPW = Math.max(Math.round(pw) + 1, 3);
+
+    // Week 1: Hooks
+    html += '<div class="report-callout" style="margin-bottom:16px;"><h4>Week 1: Hook Mastery</h4>';
+    html += '<p><strong>Goal:</strong> Write ' + targetPW + ' posts this week, each opening with a <strong>' + esc(bestHook) + '</strong> hook.</p>';
+    if (HOOK_TEMPLATES[bestHook]) {
+      html += '<p><strong>Templates to use:</strong></p><ul>';
+      HOOK_TEMPLATES[bestHook].forEach(function(t) { html += '<li style="font-size:13px;color:#334155;line-height:1.7;"><em>' + esc(t) + '</em></li>'; });
+      html += '</ul>';
+    }
+    html += '<p><strong>Target:</strong> ' + targetEng + '+ engagement per post (20% above your current average of ' + Math.round(avgE) + ').</p>';
+    html += '</div>';
+
+    // Week 2: Closings
+    html += '<div class="report-callout" style="margin-bottom:16px;"><h4>Week 2: Closing Power</h4>';
+    html += '<p><strong>Goal:</strong> Write ' + targetPW + ' posts, each ending with a <strong>' + esc(bestClose) + '</strong>.</p>';
+    html += '<p><strong>Why:</strong> ';
+    if (bestClose === 'Question Close') html += 'Questions invite replies. Ask something specific that your audience can answer from their own experience. Avoid generic questions like "What do you think?" \u2014 instead, ask "What\u2019s the biggest [X] mistake you\u2019ve made?"';
+    else if (bestClose === 'Call to Action') html += 'Direct your reader to take a specific action. "DM me if you want the template" or "Share this with someone who needs to hear it" \u2014 make it concrete.';
+    else if (bestClose === 'Forward-Looking Declaration') html += 'End with a punchy, short sentence. Under 80 characters. Make it quotable. The last line is what people remember.';
+    else html += 'Wrap up with a clear takeaway. One sentence that captures the entire post\u2019s message. If someone only read the last line, they should get the core idea.';
+    html += '</p>';
+    html += '<p><strong>Target:</strong> Increase comment ratio by 15% vs your current ' + (commentRatio*100).toFixed(1) + '%.</p>';
+    html += '</div>';
+
+    // Week 3: The Combo
+    html += '<div class="report-callout" style="margin-bottom:16px;"><h4>Week 3: The Winning Combo</h4>';
+    html += '<p><strong>Goal:</strong> Write ' + targetPW + ' posts combining your strongest patterns:</p>';
+    html += '<ol style="padding-left:20px;">';
+    html += '<li style="font-size:13px;color:#334155;line-height:1.8;">Open with a <strong>' + esc(bestHook) + '</strong> hook</li>';
+    if (catMap[bestCat] && bestCat !== 'Other') html += '<li style="font-size:13px;color:#334155;line-height:1.8;">Write about <strong>' + esc(bestCat) + '</strong> (your highest-performing topic)</li>';
+    html += '<li style="font-size:13px;color:#334155;line-height:1.8;">Target <strong>' + bestLen.min + '\u2013' + (bestLen.max === Infinity ? '500+' : bestLen.max) + ' words</strong></li>';
+    html += '<li style="font-size:13px;color:#334155;line-height:1.8;">Close with a <strong>' + esc(bestClose) + '</strong></li>';
+    html += '</ol>';
+    html += '<p><strong>Target:</strong> At least one post breaking your top 25% threshold (' + Math.round(eng(top25[top25.length-1])) + '+ engagement).</p>';
+    html += '</div>';
+
+    // Week 4: Experiment
+    html += '<div class="report-callout" style="margin-bottom:16px;"><h4>Week 4: The Experiment</h4>';
+    html += '<p><strong>Goal:</strong> Write ' + targetPW + ' posts, each trying one <strong>underused weapon</strong> from Section 3:</p>';
+    if (weapons.length > 0) {
+      html += '<ul>';
+      weapons.slice(0, 4).forEach(function(w) {
+        html += '<li style="font-size:13px;color:#334155;line-height:1.8;">Try a post using <strong>' + w.name.toLowerCase() + '</strong> (has worked at +' + w.lift + '% for you before)</li>';
+      });
+      html += '</ul>';
+    } else {
+      html += '<p>Try a hook type you\u2019ve never used, a topic you haven\u2019t covered, or a format (like a numbered list or a thread) that\u2019s outside your comfort zone.</p>';
+    }
+    html += '<p><strong>Target:</strong> Discover at least one new pattern that outperforms your average.</p>';
+    html += '</div>';
+
+    // Success metric
+    html += '<div class="report-subsection"><h4>Your Success Metric</h4>';
+    html += '<p class="report-prose">After 30 days, compare your average engagement against your current <strong>' + Math.round(avgE) + '</strong>. If the challenge works, you should see a <strong>15\u201325% improvement</strong>. The biggest gains will come from the combo week \u2014 that\u2019s where individual improvements stack.</p>';
+    html += '</div>';
+
+    html += '</div>'; // close section 8
+
+    html += '</div>'; // close .report
+    container.innerHTML = html;
+  }
+
   // ── Enhanced Posting Frequency ────────────────────────────────────
   function renderFrequency(posts) {
     var container = document.getElementById('frequency');
@@ -1706,7 +2375,7 @@
       var tb = document.querySelector('#'+id+' tbody');
       if (tb) tb.innerHTML = '';
     });
-    ['catCharts','hookAnalysis','hashtagAnalysis','structureAnalysis','frequency','insights','recommendations','funnel','timingAnalysis','contentCalendar','shareSummaryText','lengthPerfContent','styleAnalysis'].forEach(function(id){
+    ['catCharts','hookAnalysis','hashtagAnalysis','structureAnalysis','frequency','insights','recommendations','funnel','timingAnalysis','contentCalendar','shareSummaryText','lengthPerfContent','styleAnalysis','coachingAnalysis'].forEach(function(id){
       var el = document.getElementById(id);
       if (el) el.innerHTML = '';
     });
@@ -1901,6 +2570,9 @@
 
     // Writing Style Profile
     renderStyleProfile(posts, hasViews);
+
+    // Growth & Coaching
+    renderCoaching(posts, hasViews);
 
     // Share Summary
     renderShareSummary(posts, hasViews, medViews, avgEng, medEng, totalViews);
