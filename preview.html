@@ -290,6 +290,85 @@
     color: var(--text-secondary); font-weight: 500;
   }
 
+  /* ── Report layout (Writing Analysis) ── */
+  .report { max-width: 780px; margin: 0 auto; }
+  .report-meta {
+    background: linear-gradient(135deg, #f8fafc, #eef2ff);
+    border-radius: 12px; padding: 20px 24px;
+    margin-bottom: 28px; font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  .report-meta strong { color: var(--text); }
+  .report-section {
+    margin-bottom: 36px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .report-section:last-child { border-bottom: none; }
+  .report-section > h3 {
+    font-size: 18px; font-weight: 800;
+    color: var(--text); margin-bottom: 14px;
+    letter-spacing: -0.02em;
+  }
+  .report-subsection { margin: 20px 0; }
+  .report-subsection > h4 {
+    font-size: 15px; font-weight: 700;
+    color: var(--blue); margin-bottom: 8px;
+  }
+  .report-prose {
+    font-size: 14px; line-height: 1.85;
+    color: #334155; margin-bottom: 14px;
+  }
+  .report-prose strong { color: var(--text); }
+  .report-quote {
+    margin: 10px 0; padding: 10px 16px;
+    border-left: 3px solid #cbd5e1;
+    font-style: italic; font-size: 13px;
+    color: #475569; line-height: 1.7;
+    background: #f8fafc; border-radius: 0 8px 8px 0;
+  }
+  .report-quote .rq-metric {
+    font-style: normal; font-size: 11px;
+    color: #94a3b8; margin-left: 4px;
+  }
+  .report-quote .rq-note {
+    font-style: normal; font-size: 12px;
+    color: #64748b; display: block; margin-top: 4px;
+  }
+  .report-sig-list {
+    list-style: none; padding: 0; margin: 12px 0;
+  }
+  .report-sig-list li {
+    padding: 6px 0; font-size: 13px;
+    color: #334155; border-bottom: 1px solid #f1f5f9;
+    line-height: 1.6;
+  }
+  .report-sig-list li strong { color: var(--purple); }
+  .report-sig-list li em { color: #64748b; font-size: 12px; }
+  .report-avoid-list {
+    list-style: none; padding: 0; margin: 12px 0;
+  }
+  .report-avoid-list li {
+    padding: 8px 0; font-size: 13px;
+    color: #334155; line-height: 1.7;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .report-avoid-list li strong { color: var(--text); }
+  .report-callout {
+    margin: 20px 0; padding: 20px 24px;
+    background: linear-gradient(135deg, var(--blue-light), var(--purple-light));
+    border-radius: 12px;
+  }
+  .report-callout h4 {
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 8px; color: var(--text);
+  }
+  .report-callout p, .report-callout li {
+    font-size: 13px; line-height: 1.8;
+    color: #334155;
+  }
+  .report-callout ol { padding-left: 20px; }
+
   /* ── Tab navigation ── */
   .tab-bar {
     display: flex; gap: 0;

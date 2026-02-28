@@ -844,69 +844,20 @@
     var container = document.getElementById('styleAnalysis');
     if (!container) return;
 
-    // Filter to substantive posts (100+ words)
     var qual = posts.filter(function(p) { return p.text && wc(p.text) >= 100; });
     if (qual.length < 5) {
-      container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px;">Not enough substantive posts (100+ words) to build a writing style profile. Found ' + qual.length + ' — need at least 5.</p>';
+      container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px;">Not enough substantive posts (100+ words) to build a writing style profile. Found ' + qual.length + ' \u2014 need at least 5.</p>';
       return;
     }
 
+    // ── Shared analysis data ──
     var avgE = qual.reduce(function(s,p){return s+eng(p);},0) / qual.length;
     var topQ = qual.slice().sort(function(a,b){return eng(b)-eng(a);});
     var top10 = topQ.slice(0, Math.max(10, Math.ceil(qual.length * 0.25)));
     var botQ = topQ.slice(Math.floor(qual.length * 0.75));
+    var avgWc = Math.round(qual.reduce(function(s,p){return s+wc(p.text);},0) / qual.length);
 
-    var html = '';
-    html += '<div style="background:var(--blue-light);border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;">';
-    html += '<strong>' + qual.length + ' posts analysed</strong> (100+ words) out of ' + posts.length + ' total';
-    if (hasViews) {
-      var medV = median(qual.map(function(p){return views(p);}).filter(function(v){return v>0;}));
-      html += ' &middot; Median views: ' + fmt(Math.round(medV));
-    }
-    html += ' &middot; Median engagement: ' + median(qual.map(function(p){return eng(p);})).toFixed(0);
-    html += '</div>';
-
-    // ─── 1. Opening Patterns ───
-    html += '<div class="insight" style="margin-bottom:16px;"><h3>\uD83C\uDFA3 1. Opening Patterns</h3>';
-    var openerMap = {};
-    qual.forEach(function(p) {
-      var t = p._hookType || 'Statement';
-      if (!openerMap[t]) openerMap[t] = [];
-      openerMap[t].push(p);
-    });
-    var openerTypes = Object.keys(openerMap).sort(function(a,b){return openerMap[b].length - openerMap[a].length;});
-    html += '<p style="margin-bottom:10px;">Your posts open in ' + openerTypes.length + ' distinct patterns:</p>';
-    openerTypes.forEach(function(type) {
-      var op = openerMap[type];
-      var avg = op.reduce(function(s,p){return s+eng(p);},0) / op.length;
-      var sorted = op.slice().sort(function(a,b){return eng(b)-eng(a);});
-      var vsAvg = avgE > 0 ? Math.round((avg - avgE) / avgE * 100) : 0;
-      var vsColor = vsAvg > 10 ? '#059669' : vsAvg < -10 ? '#dc2626' : '#64748b';
-      html += '<div style="margin:10px 0 14px;padding-left:14px;border-left:3px solid ' + vsColor + ';">';
-      html += '<strong>' + esc(type) + '</strong> (' + op.length + ' posts, ' + avg.toFixed(1) + ' avg eng. <span style="color:' + vsColor + ';">' + (vsAvg > 0 ? '+' : '') + vsAvg + '% vs avg</span>)<br>';
-      var exCount = Math.min(3, sorted.length);
-      for (var i = 0; i < exCount; i++) {
-        var ep = sorted[i];
-        html += '<span style="font-style:italic;color:#475569;">\u201C' + esc(firstLine(ep.text)) + '\u201D</span> <span style="font-size:11px;color:#94a3b8;">\u2014 ' + eng(ep) + ' eng.' + (hasViews && views(ep) > 0 ? ', ' + fmt(views(ep)) + ' views' : '') + '</span><br>';
-      }
-      html += '</div>';
-    });
-    // Best/worst openers
-    var bestOpener = openerTypes.slice().sort(function(a,b) {
-      return (openerMap[b].reduce(function(s,p){return s+eng(p);},0)/openerMap[b].length) -
-             (openerMap[a].reduce(function(s,p){return s+eng(p);},0)/openerMap[a].length);
-    })[0];
-    var worstOpener = openerTypes.slice().sort(function(a,b) {
-      return (openerMap[a].reduce(function(s,p){return s+eng(p);},0)/openerMap[a].length) -
-             (openerMap[b].reduce(function(s,p){return s+eng(p);},0)/openerMap[b].length);
-    })[0];
-    html += '<p><strong>Strongest opener:</strong> ' + esc(bestOpener) + '. <strong>Weakest:</strong> ' + esc(worstOpener) + '.</p>';
-    html += '</div>';
-
-    // ─── 2. Voice & Tone ───
-    html += '<div class="insight purple" style="margin-bottom:16px;"><h3>\uD83C\uDFA4 2. Voice &amp; Tone</h3>';
-
-    // Pronouns
+    // Pronouns, voice traits, hedge/strong counts (used across sections)
     var iCount = 0, youCount = 0, weCount = 0, totalWords = 0;
     var questionPosts = 0, exclamPosts = 0;
     var allText = '';
@@ -924,37 +875,141 @@
       if (/\?/.test(t)) questionPosts++;
       if (/!/.test(t)) exclamPosts++;
     });
-    var iPct = (iCount / totalWords * 100).toFixed(1);
-    var youPct = (youCount / totalWords * 100).toFixed(1);
-
-    // Determine voice character
-    var voiceTraits = [];
-    if (iCount > youCount * 1.5) voiceTraits.push('personal and experience-driven');
-    else if (youCount > iCount) voiceTraits.push('reader-focused and direct');
-    else voiceTraits.push('balanced between personal and reader-focused');
-
-    if (questionPosts > qual.length * 0.5) voiceTraits.push('conversational (questions in ' + Math.round(questionPosts/qual.length*100) + '% of posts)');
-    if (exclamPosts > qual.length * 0.4) voiceTraits.push('energetic');
-
-    // Hedge words vs strong words
-    var hedges = 0, strong = 0;
-    var hedgeWords = ['maybe','perhaps','might','could','somewhat','probably','possibly','seems','apparently','arguably'];
-    var strongWords = ['never','always','every','must','absolutely','definitely','clearly','obviously','undeniably','guaranteed'];
     var lowerAll = allText.toLowerCase();
-    hedgeWords.forEach(function(w) { var re = new RegExp('\\b' + w + '\\b', 'gi'); var m = lowerAll.match(re); if (m) hedges += m.length; });
-    strongWords.forEach(function(w) { var re = new RegExp('\\b' + w + '\\b', 'gi'); var m = lowerAll.match(re); if (m) strong += m.length; });
+    var hedges = 0, strong = 0;
+    ['maybe','perhaps','might','could','somewhat','probably','possibly','seems','apparently','arguably'].forEach(function(w) { var m = lowerAll.match(new RegExp('\\b' + w + '\\b', 'gi')); if (m) hedges += m.length; });
+    ['never','always','every','must','absolutely','definitely','clearly','obviously','undeniably','guaranteed'].forEach(function(w) { var m = lowerAll.match(new RegExp('\\b' + w + '\\b', 'gi')); if (m) strong += m.length; });
 
-    if (strong > hedges * 2) voiceTraits.push('assertive and opinionated');
-    else if (hedges > strong * 2) voiceTraits.push('measured and nuanced');
-    else voiceTraits.push('moderately opinionated');
+    // Structural analysis (used in multiple sections)
+    var lineBreakPosts = qual.filter(function(p) { return p.text.split(/\n/).filter(function(l){return l.trim();}).length >= 5; }).length;
+    var listPosts = qual.filter(function(p) { return /^[\s]*[\-\u2022\u25CF\u25CB\u2023\u2043\u25AA\u25A0\u2022\u25CF\u25BA\u25B8]|\d+[.)]\s/m.test(p.text); }).length;
+    var dataPosts = qual.filter(function(p) { return /\d{2,}[%$]|\$[\d,]+|\d+x|\d+ ?(percent|million|billion|thousand)/i.test(p.text); });
+    var storyPosts = qual.filter(function(p) { return /\b(I |my |when I|years? ago|back in|I remember|true story)/i.test(p.text); });
+    var analogyPosts = qual.filter(function(p) { return /\b(like a|it's like|think of it|imagine|same way|just as)\b/i.test(p.text); });
+    var rhetoricPosts = qual.filter(function(p) { return (p.text.match(/\?/g) || []).length >= 2; });
+    var qClosePosts = qual.filter(function(p) {
+      var lines = p.text.trim().split(/\n/).filter(function(l){return l.trim();});
+      return lines.length > 0 && /\?\s*$/.test(lines[lines.length-1]);
+    }).length;
 
-    html += '<p style="margin-bottom:10px;">Your voice is <strong>' + voiceTraits.join(', ') + '</strong>.</p>';
-    html += '<p style="margin-bottom:10px;">Pronoun balance: <strong>"I/my/me"</strong> appears ' + iPct + '% of words, <strong>"you/your"</strong> ' + youPct + '%. ' +
-      (iCount > youCount * 1.5 ? 'You lead with personal experience — this builds authenticity but consider adding more "you" to increase reader connection.' :
-       youCount > iCount ? 'You speak directly to the reader — great for engagement. Your audience feels addressed, not lectured at.' :
-       'Good balance of personal and reader-directed language.') + '</p>';
+    // Helper: quote a post excerpt with metrics
+    function rq(p, text, note) {
+      var h = '<div class="report-quote">\u201C' + esc(text) + '\u201D';
+      h += '<span class="rq-metric"> \u2014 ';
+      if (hasViews && views(p) > 0) h += fmt(views(p)) + ' views, ';
+      h += eng(p) + ' engagement</span>';
+      if (note) h += '<span class="rq-note">' + esc(note) + '</span>';
+      h += '</div>';
+      return h;
+    }
+    function firstSentences(text, n) {
+      var s = text.split(/(?<=[.!?])\s+/).slice(0, n || 2);
+      return s.join(' ').substring(0, 250) + (s.join(' ').length > 250 ? '...' : '');
+    }
 
-    // Signature phrases (2-3 word n-grams that appear 3+ times)
+    var html = '<div class="report">';
+
+    // ── Meta header ──
+    html += '<div class="report-meta">';
+    html += '<strong>' + qual.length + ' posts analysed</strong> (100+ words) out of ' + posts.length + ' total';
+    if (hasViews) {
+      var medV = median(qual.map(function(p){return views(p);}).filter(function(v){return v>0;}));
+      html += ' &middot; Median views: <strong>' + fmt(Math.round(medV)) + '</strong>';
+    }
+    html += ' &middot; Median engagement: <strong>' + median(qual.map(function(p){return eng(p);})).toFixed(0) + '</strong>';
+    html += ' &middot; Avg word count: <strong>' + avgWc + '</strong>';
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 1. OPENING PATTERNS
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>1. How You Open Posts</h3>';
+
+    var openerMap = {};
+    qual.forEach(function(p) {
+      var t = p._hookType || 'Statement';
+      if (!openerMap[t]) openerMap[t] = [];
+      openerMap[t].push(p);
+    });
+    var openerTypes = Object.keys(openerMap).sort(function(a,b){return openerMap[b].length - openerMap[a].length;});
+
+    // Find best/worst openers
+    var bestOpener = openerTypes.slice().sort(function(a,b) {
+      return (openerMap[b].reduce(function(s,p){return s+eng(p);},0)/openerMap[b].length) -
+             (openerMap[a].reduce(function(s,p){return s+eng(p);},0)/openerMap[a].length);
+    })[0];
+    var worstOpener = openerTypes.slice().sort(function(a,b) {
+      return (openerMap[a].reduce(function(s,p){return s+eng(p);},0)/openerMap[a].length) -
+             (openerMap[b].reduce(function(s,p){return s+eng(p);},0)/openerMap[b].length);
+    })[0];
+
+    html += '<p class="report-prose">Your highest-performing openers follow clear patterns. Across ' + qual.length + ' substantive posts, you open in <strong>' + openerTypes.length + ' distinct ways</strong>. Your strongest opener type is the <strong>' + esc(bestOpener) + '</strong>, which outperforms your average engagement' + (openerTypes.length > 1 ? ', while <strong>' + esc(worstOpener) + '</strong> openers tend to underperform.' : '.') + '</p>';
+
+    openerTypes.forEach(function(type) {
+      var op = openerMap[type];
+      var avg = op.reduce(function(s,p){return s+eng(p);},0) / op.length;
+      var sorted = op.slice().sort(function(a,b){return eng(b)-eng(a);});
+      var vsAvg = avgE > 0 ? Math.round((avg - avgE) / avgE * 100) : 0;
+
+      html += '<div class="report-subsection"><h4>The ' + esc(type) + ' Opener</h4>';
+      html += '<p class="report-prose">Used in ' + op.length + ' posts (' + Math.round(op.length/qual.length*100) + '% of your writing). Average engagement: ' + avg.toFixed(0) + ' \u2014 <strong>' + (vsAvg > 0 ? '+' : '') + vsAvg + '% vs your overall average</strong>.' + (vsAvg > 15 ? ' This is one of your strongest opening moves.' : vsAvg < -15 ? ' This type tends to underperform for you.' : '') + '</p>';
+
+      var exCount = Math.min(4, sorted.length);
+      for (var i = 0; i < exCount; i++) {
+        html += rq(sorted[i], firstSentences(sorted[i].text, 2));
+      }
+      html += '</div>';
+    });
+
+    // What weak openers look like
+    if (worstOpener !== bestOpener) {
+      var worstPosts = openerMap[worstOpener].slice().sort(function(a,b){return eng(a)-eng(b);});
+      html += '<div class="report-subsection"><h4>What Your Weakest Openers Look Like</h4>';
+      html += '<p class="report-prose">Posts that underperform tend to open with <strong>' + esc(worstOpener).toLowerCase() + '</strong> hooks. These get ' + Math.abs(Math.round(((openerMap[worstOpener].reduce(function(s,p){return s+eng(p);},0)/openerMap[worstOpener].length) - avgE) / avgE * 100)) + '% less engagement than your average. Your audience responds better to ' + esc(bestOpener).toLowerCase() + ' openers.</p>';
+      if (worstPosts.length > 0) {
+        html += rq(worstPosts[0], firstSentences(worstPosts[0].text, 2), 'One of your lower-performing openers');
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 2. VOICE AND TONE
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>2. Voice and Tone</h3>';
+
+    // Build voice portrait
+    var voiceDesc = '';
+    if (iCount > youCount * 2 && exclamPosts > qual.length * 0.4) {
+      voiceDesc = 'Your writing voice is that of someone who leads from personal experience and isn\u2019t afraid to show enthusiasm. You write with energy and conviction, drawing readers in through your own perspective rather than abstract analysis.';
+    } else if (youCount > iCount && questionPosts > qual.length * 0.4) {
+      voiceDesc = 'You write like a coach or mentor \u2014 directly addressing your reader, asking them questions, making them think. Your voice is conversational and reader-focused, creating a sense of dialogue rather than monologue.';
+    } else if (strong > hedges * 2) {
+      voiceDesc = 'You take clear, assertive positions. Your voice carries authority \u2014 you don\u2019t hedge or equivocate. When you make a claim, you commit to it fully. This gives your writing a decisive, confident feel that stands out.';
+    } else if (hedges > strong * 2) {
+      voiceDesc = 'Your voice is measured and thoughtful. You acknowledge nuance, consider multiple angles, and avoid absolute claims. This gives your writing credibility with readers who value careful analysis over bold pronouncements.';
+    } else {
+      voiceDesc = 'Your voice balances personal experience with reader engagement. You mix first-person perspective ("I/my" appears ' + (iCount / totalWords * 100).toFixed(1) + '% of the time) with direct reader address ("you/your" at ' + (youCount / totalWords * 100).toFixed(1) + '%), creating a conversational but authoritative tone.';
+    }
+    html += '<p class="report-prose">' + voiceDesc + '</p>';
+
+    // Opinionatedness
+    html += '<div class="report-subsection"><h4>How Opinionated You Are</h4>';
+    if (strong > hedges * 1.5) {
+      html += '<p class="report-prose"><strong>Very.</strong> You use strong/absolute language (' + strong + ' instances of words like "never," "always," "clearly," "must") far more than hedge words (' + hedges + ' instances of "maybe," "perhaps," "might"). You take positions and rarely qualify them.</p>';
+      // Find a strong-opinion example
+      var strongPost = qual.filter(function(p) { return /\b(never|always|must|absolutely|clearly|obviously)\b/i.test(p.text); }).sort(function(a,b){return eng(b)-eng(a);})[0];
+      if (strongPost) {
+        html += rq(strongPost, firstSentences(strongPost.text, 2), 'Example of your assertive voice');
+      }
+    } else if (hedges > strong * 1.5) {
+      html += '<p class="report-prose">You tend toward measured, nuanced positions. Hedge words (' + hedges + ' instances) outweigh strong/absolute language (' + strong + ' instances). You prefer to acknowledge complexity rather than make sweeping claims.</p>';
+    } else {
+      html += '<p class="report-prose">Moderately opinionated. You balance conviction (' + strong + ' strong-language instances) with nuance (' + hedges + ' hedge words). You\u2019re willing to take positions but you acknowledge other perspectives.</p>';
+    }
+    html += '</div>';
+
+    // Signature phrases
     var ngramMap = {};
     qual.forEach(function(p) {
       var words = (p.text || '').toLowerCase().replace(/[^a-z0-9'\s-]/g, ' ').split(/\s+/).filter(Boolean);
@@ -967,35 +1022,48 @@
         }
       }
     });
-    // Filter out generic phrases
-    var stopPhrases = ['in the','of the','on the','to the','and the','it is','this is','that is','i am','is a','for the','at the','with the','from the','has been','have been','will be','to be','and i','but i','if you','do you','are you','is the','was a','in a','of a'];
+    var stopPhrases = ['in the','of the','on the','to the','and the','it is','this is','that is','i am','is a','for the','at the','with the','from the','has been','have been','will be','to be','and i','but i','if you','do you','are you','is the','was a','in a','of a','a lot','it was','there is','going to','want to','need to','able to','i think','they are','can be','i was','that the','you can','we are','not a','this was'];
     var sigPhrases = Object.keys(ngramMap)
       .filter(function(k) { return ngramMap[k] >= 3 && stopPhrases.indexOf(k) === -1 && k.split(' ').length >= 2; })
       .sort(function(a,b) { return ngramMap[b] - ngramMap[a]; })
       .slice(0, 15);
 
     if (sigPhrases.length > 0) {
-      html += '<p style="margin-bottom:6px;"><strong>Signature phrases</strong> (your verbal fingerprints):</p>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">';
+      html += '<div class="report-subsection"><h4>Signature Phrases and Verbal Fingerprints</h4>';
+      html += '<p class="report-prose">These phrases are distinctly yours and appear repeatedly across your posts:</p>';
+      html += '<ul class="report-sig-list">';
       sigPhrases.forEach(function(phrase) {
-        html += '<span style="background:#ede9fe;color:#7c3aed;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">"' + esc(phrase) + '" \u00D7' + ngramMap[phrase] + '</span>';
+        html += '<li><strong>\u201C' + esc(phrase) + '\u201D</strong> <em>(' + ngramMap[phrase] + ' occurrences)</em></li>';
       });
-      html += '</div>';
+      html += '</ul></div>';
     }
     html += '</div>';
 
-    // ─── 3. Structure & Formatting ───
-    html += '<div class="insight green" style="margin-bottom:16px;"><h3>\uD83D\uDCC0 3. Structure &amp; Formatting</h3>';
-    var avgWc = Math.round(qual.reduce(function(s,p){return s+wc(p.text);},0) / qual.length);
-    var lineBreakPosts = qual.filter(function(p) { return p.text.split(/\n/).filter(function(l){return l.trim();}).length >= 5; }).length;
-    var listPosts = qual.filter(function(p) { return /^[\s]*[\-\u2022\u25CF\u25CB\u2023\u2043\u25AA\u25A0•●►▸]|\d+[.)]\s/m.test(p.text); }).length;
-    var shortLinePosts = qual.filter(function(p) {
-      var lines = p.text.split(/\n/).filter(function(l){return l.trim();});
-      if (lines.length < 3) return false;
-      return lines.reduce(function(s,l){return s+l.trim().split(/\s+/).length;},0) / lines.length < 8;
-    }).length;
+    // ═══════════════════════════════════════════════════════════════
+    // 3. STRUCTURE AND FORMATTING
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>3. Structure and Formatting</h3>';
 
-    // Average sentences per paragraph
+    // Post architecture
+    html += '<div class="report-subsection"><h4>The Architecture of Your Posts</h4>';
+    var archSteps = [];
+    archSteps.push('<strong>Hook</strong> (1\u20132 sentences) \u2014 ' + esc(bestOpener).toLowerCase() + ' opener');
+    if (lineBreakPosts > qual.length * 0.3) archSteps.push('<strong>White space break</strong> for mobile-friendly readability');
+    if (iCount > youCount) archSteps.push('<strong>Personal context</strong> \u2014 story, experience, or first-hand observation');
+    else archSteps.push('<strong>Setup</strong> \u2014 problem statement or context');
+    if (listPosts > qual.length * 0.25) archSteps.push('<strong>Key points</strong> presented as a list or series of bullets');
+    else archSteps.push('<strong>Supporting argument</strong> \u2014 narrative prose building the case');
+    archSteps.push('<strong>Insight</strong> \u2014 lesson, takeaway, or implication');
+    if (qClosePosts > qual.length * 0.3) archSteps.push('<strong>Closing question</strong> to drive comments');
+    else archSteps.push('<strong>Closing statement</strong> \u2014 punchy final line or declaration');
+
+    html += '<p class="report-prose"><strong>Typical structure (' + avgWc + ' words):</strong></p>';
+    html += '<ol style="padding-left:20px;margin:10px 0 16px;">';
+    archSteps.forEach(function(s) { html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;">' + s + '</li>'; });
+    html += '</ol>';
+    html += '</div>';
+
+    // Paragraph length
     var totalSentences = 0, totalParas = 0;
     qual.forEach(function(p) {
       var paras = p.text.split(/\n\n+/).filter(function(pa){return pa.trim();});
@@ -1006,110 +1074,144 @@
       });
     });
     var sentPerPara = totalParas > 0 ? (totalSentences / totalParas).toFixed(1) : '?';
+    var lbPct = Math.round(lineBreakPosts/qual.length*100);
+    var listPct = Math.round(listPosts/qual.length*100);
 
-    html += '<p style="margin-bottom:8px;"><strong>Average post length:</strong> ' + avgWc + ' words</p>';
-    html += '<p style="margin-bottom:8px;"><strong>Avg sentences per paragraph:</strong> ' + sentPerPara + '</p>';
-    html += '<p style="margin-bottom:8px;"><strong>Uses generous line breaks:</strong> ' + Math.round(lineBreakPosts/qual.length*100) + '% of posts (5+ visible lines)</p>';
-    html += '<p style="margin-bottom:8px;"><strong>Uses lists/bullets:</strong> ' + Math.round(listPosts/qual.length*100) + '% of posts</p>';
-    html += '<p style="margin-bottom:8px;"><strong>Short punchy lines (&lt;8 words avg):</strong> ' + Math.round(shortLinePosts/qual.length*100) + '% of posts</p>';
+    html += '<div class="report-subsection"><h4>Paragraph Length</h4>';
+    html += '<p class="report-prose">' + (parseFloat(sentPerPara) <= 2 ? 'Short. Your paragraphs are almost always 1\u20132 sentences, averaging <strong>' + sentPerPara + ' sentences per paragraph</strong>. You use single-sentence paragraphs frequently for emphasis \u2014 this creates a punchy, mobile-optimised reading experience.' : parseFloat(sentPerPara) <= 3.5 ? 'Moderate. You average <strong>' + sentPerPara + ' sentences per paragraph</strong> \u2014 enough to develop ideas without losing readers in dense blocks of text.' : 'You write in developed paragraphs, averaging <strong>' + sentPerPara + ' sentences per paragraph</strong>. This creates a more analytical, long-form feel.') + '</p>';
+    html += '</div>';
 
-    // Typical post skeleton
-    html += '<p style="margin-bottom:6px;"><strong>Typical post architecture:</strong></p><ol style="padding-left:20px;font-size:13px;color:#475569;margin-bottom:10px;">';
-    html += '<li>Hook / opening line (attention grab)</li>';
-    if (lineBreakPosts > qual.length * 0.3) html += '<li>White space break for readability</li>';
-    if (iCount > youCount) html += '<li>Personal story, experience, or context</li>';
-    else html += '<li>Problem statement or setup</li>';
-    if (listPosts > qual.length * 0.25) html += '<li>Key points as a list or bullets</li>';
-    else html += '<li>Supporting argument or narrative</li>';
-    html += '<li>Insight, lesson, or takeaway</li>';
-    var qClosePosts = qual.filter(function(p) {
-      var lines = p.text.trim().split(/\n/).filter(function(l){return l.trim();});
-      return lines.length > 0 && /\?\s*$/.test(lines[lines.length-1]);
-    }).length;
-    if (qClosePosts > qual.length * 0.3) html += '<li>Closing question to drive comments</li>';
-    else html += '<li>Closing statement or call to action</li>';
-    html += '</ol>';
+    html += '<div class="report-subsection"><h4>White Space and Lists</h4>';
+    html += '<p class="report-prose">' + (lbPct > 50 ? 'You\u2019re generous with white space \u2014 <strong>' + lbPct + '%</strong> of your posts use 5+ visible line breaks. Your posts are designed for mobile scrolling, with lots of breathing room between ideas.' : lbPct > 25 ? 'You use moderate white space (' + lbPct + '% of posts with 5+ line breaks). Your formatting balances readability with content density.' : 'You write in denser blocks \u2014 only ' + lbPct + '% of posts use generous line breaks. Your content is compact and substance-heavy.') + '</p>';
+    html += '<p class="report-prose">' + (listPct < 15 ? 'You rarely use lists or bullets (<strong>' + listPct + '%</strong> of posts). Your default mode is conversational prose broken into short paragraphs. When you do use lists, they tend to be supporting details, not the main argument.' : listPct < 40 ? 'You use lists in <strong>' + listPct + '%</strong> of posts, typically to present data points or examples. Your primary mode is still prose, with lists as an occasional structural tool.' : 'Lists and bullets appear in <strong>' + listPct + '%</strong> of your posts. You lean heavily on structured formatting to organise your ideas.') + '</p>';
+    html += '</div>';
 
-    // Does length correlate with engagement?
+    // Length vs engagement
+    html += '<div class="report-subsection"><h4>Word Count and Engagement</h4>';
     var shortPosts = qual.filter(function(p){return wc(p.text) < 150;});
     var longPosts = qual.filter(function(p){return wc(p.text) >= 150;});
+    html += '<p class="report-prose">Your average post is <strong>' + avgWc + ' words</strong>. ';
     if (shortPosts.length >= 3 && longPosts.length >= 3) {
       var shortAvg = shortPosts.reduce(function(s,p){return s+eng(p);},0)/shortPosts.length;
       var longAvg = longPosts.reduce(function(s,p){return s+eng(p);},0)/longPosts.length;
-      html += '<p>' + (longAvg > shortAvg * 1.15 ? 'Your longer posts (150+ words) outperform shorter ones by ' + Math.round((longAvg-shortAvg)/shortAvg*100) + '%. Your audience rewards depth.' :
-        shortAvg > longAvg * 1.15 ? 'Your shorter posts (<150 words) outperform longer ones by ' + Math.round((shortAvg-longAvg)/longAvg*100) + '%. Your audience prefers conciseness.' :
-        'Post length doesn\u2019t significantly affect your engagement \u2014 both short and long posts perform similarly.') + '</p>';
+      html += (longAvg > shortAvg * 1.15 ? 'Your longer posts (150+ words) outperform shorter ones by <strong>' + Math.round((longAvg-shortAvg)/shortAvg*100) + '%</strong>. Your audience rewards depth and developed arguments.' :
+        shortAvg > longAvg * 1.15 ? 'Your shorter posts (<150 words) outperform longer ones by <strong>' + Math.round((shortAvg-longAvg)/longAvg*100) + '%</strong>. Your audience responds best to concise, punchy content.' :
+        'Post length doesn\u2019t significantly affect your engagement \u2014 both short and long posts perform similarly. Your sweet spot appears to be around ' + avgWc + ' words.');
     }
+    html += '</p></div>';
     html += '</div>';
 
-    // ─── 4. Argument Construction ───
-    html += '<div class="insight orange" style="margin-bottom:16px;"><h3>\uD83E\uDDE0 4. Argument Construction</h3>';
-    var dataPosts = qual.filter(function(p) { return /\d{2,}[%$]|\$[\d,]+|\d+x|\d+ ?(percent|million|billion|thousand)/i.test(p.text); });
-    var storyPosts = qual.filter(function(p) { return /\b(I |my |when I|years? ago|back in|I remember|true story)/i.test(p.text); });
-    var analogyPosts = qual.filter(function(p) { return /\b(like a|it's like|think of it|imagine|same way|just as)\b/i.test(p.text); });
-    var rhetoricPosts = qual.filter(function(p) { return (p.text.match(/\?/g) || []).length >= 2; });
+    // ═══════════════════════════════════════════════════════════════
+    // 4. ARGUMENT CONSTRUCTION
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>4. How You Build Arguments</h3>';
 
-    html += '<p style="margin-bottom:8px;">Your primary persuasion tools:</p><ul style="padding-left:20px;font-size:13px;color:#475569;margin-bottom:10px;">';
-    if (dataPosts.length > 0) html += '<li><strong>Data &amp; numbers:</strong> ' + Math.round(dataPosts.length/qual.length*100) + '% of posts use specific figures</li>';
-    if (storyPosts.length > 0) html += '<li><strong>Personal stories:</strong> ' + Math.round(storyPosts.length/qual.length*100) + '% of posts lead with experience</li>';
-    if (analogyPosts.length > 0) html += '<li><strong>Analogies &amp; comparisons:</strong> ' + Math.round(analogyPosts.length/qual.length*100) + '% of posts</li>';
-    if (rhetoricPosts.length > 0) html += '<li><strong>Rhetorical questions:</strong> ' + Math.round(rhetoricPosts.length/qual.length*100) + '% of posts use 2+ questions</li>';
-    html += '</ul>';
+    var moves = [
+      { name: 'Data and Specifics', label: 'data-driven conviction', posts: dataPosts },
+      { name: 'Personal Stories', label: 'personal stories and experience', posts: storyPosts },
+      { name: 'Analogies and Comparisons', label: 'analogies and reframing', posts: analogyPosts },
+      { name: 'Rhetorical Questions', label: 'rhetorical questions', posts: rhetoricPosts }
+    ].sort(function(a,b){return b.posts.length - a.posts.length;});
 
     // Core rhetorical move
-    var moves = [
-      { name: 'data and specifics', count: dataPosts.length },
-      { name: 'personal stories and experience', count: storyPosts.length },
-      { name: 'analogies and reframing', count: analogyPosts.length },
-      { name: 'rhetorical questions', count: rhetoricPosts.length }
-    ].sort(function(a,b){return b.count - a.count;});
-    if (moves[0].count > 0) {
-      html += '<p><strong>Core rhetorical move:</strong> You rely most on <strong>' + moves[0].name + '</strong> (' + Math.round(moves[0].count/qual.length*100) + '% of posts). ';
-      if (moves[0].count > qual.length * 0.5) {
-        html += 'This is clearly your signature approach \u2014 it gives your content a consistent analytical feel.';
+    if (moves[0].posts.length > 0) {
+      html += '<p class="report-prose">Your core rhetorical move is <strong>' + moves[0].label + '</strong> \u2014 it appears in <strong>' + Math.round(moves[0].posts.length/qual.length*100) + '%</strong> of your posts. ' + (moves[0].posts.length > qual.length * 0.5 ? 'This is clearly your signature approach and gives your content a consistent, recognisable feel.' : 'This is your most common persuasion tool, though you draw on multiple techniques.') + '</p>';
+    }
+
+    moves.forEach(function(move) {
+      if (move.posts.length < 2) return;
+      var sorted = move.posts.slice().sort(function(a,b){return eng(b)-eng(a);});
+      html += '<div class="report-subsection"><h4>' + move.name + '</h4>';
+      html += '<p class="report-prose">Appears in <strong>' + move.posts.length + ' posts</strong> (' + Math.round(move.posts.length/qual.length*100) + '% of your writing).</p>';
+      var exCount = Math.min(3, sorted.length);
+      for (var i = 0; i < exCount; i++) {
+        html += rq(sorted[i], firstSentences(sorted[i].text, 2));
       }
-      html += '</p>';
+      html += '</div>';
+    });
+
+    // How they handle objections
+    var concessionPosts = qual.filter(function(p) { return /\b(but |however|is it perfect|not perfect|not saying|to be fair|on the other hand|yes,? but|sure,? but|granted)\b/i.test(p.text); });
+    if (concessionPosts.length >= 2) {
+      html += '<div class="report-subsection"><h4>Handling Objections</h4>';
+      var cpSorted = concessionPosts.slice().sort(function(a,b){return eng(b)-eng(a);});
+      html += '<p class="report-prose">You acknowledge counterarguments in <strong>' + concessionPosts.length + ' posts</strong>. Your pattern: name the objection, concede partially, then pivot to the bigger picture.</p>';
+      var exCount2 = Math.min(2, cpSorted.length);
+      for (var j = 0; j < exCount2; j++) {
+        // Find the concession sentence
+        var sents = cpSorted[j].text.split(/(?<=[.!?])\s+/);
+        var concSent = '';
+        for (var k = 0; k < sents.length; k++) {
+          if (/\b(but |however|is it perfect|not perfect|yes,? but|sure,? but|granted)\b/i.test(sents[k])) {
+            concSent = sents[k].trim();
+            if (k + 1 < sents.length) concSent += ' ' + sents[k+1].trim();
+            break;
+          }
+        }
+        if (concSent) html += rq(cpSorted[j], trunc(concSent, 200));
+      }
+      html += '</div>';
     }
     html += '</div>';
 
-    // ─── 5. Closing Patterns ───
-    html += '<div class="insight" style="margin-bottom:16px;"><h3>\uD83C\uDFC1 5. Closing Patterns</h3>';
-    var closingTypes = { 'Question': [], 'Call to Action': [], 'Bold Statement': [], 'Summary / Takeaway': [] };
+    // ═══════════════════════════════════════════════════════════════
+    // 5. CLOSING PATTERNS
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>5. How You Close Posts</h3>';
+
+    var closingTypes = {
+      'The Question Close': { posts: [], desc: 'ending with a direct question to the audience' },
+      'The Call to Action': { posts: [], desc: 'directing the reader to take a specific action' },
+      'The Forward-Looking Declaration': { posts: [], desc: 'a punchy, declarative final line' },
+      'The Summary Close': { posts: [], desc: 'wrapping up with a takeaway or reflection' }
+    };
     qual.forEach(function(p) {
       var lines = p.text.trim().split(/\n/).filter(function(l){return l.trim();});
       if (lines.length === 0) return;
       var last = lines[lines.length-1].trim();
       var last2 = lines.length > 1 ? lines[lines.length-2].trim() + ' ' + last : last;
-      if (/\?\s*$/.test(last)) closingTypes['Question'].push(p);
-      else if (/\b(share|comment|follow|tag|let me know|tell me|what do you|drop a|hit me)\b/i.test(last2)) closingTypes['Call to Action'].push(p);
-      else if (/^[A-Z]/.test(last) && last.length < 80 && !/[,;]/.test(last)) closingTypes['Bold Statement'].push(p);
-      else closingTypes['Summary / Takeaway'].push(p);
+      if (/\?\s*$/.test(last)) closingTypes['The Question Close'].posts.push(p);
+      else if (/\b(share|comment|follow|tag|let me know|tell me|what do you|drop a|hit me)\b/i.test(last2)) closingTypes['The Call to Action'].posts.push(p);
+      else if (/^[A-Z]/.test(last) && last.length < 80 && !/[,;]/.test(last)) closingTypes['The Forward-Looking Declaration'].posts.push(p);
+      else closingTypes['The Summary Close'].posts.push(p);
     });
 
-    Object.keys(closingTypes).forEach(function(type) {
-      var cp = closingTypes[type];
-      if (cp.length === 0) return;
+    var closingKeys = Object.keys(closingTypes).filter(function(t){return closingTypes[t].posts.length > 0;}).sort(function(a,b){return closingTypes[b].posts.length - closingTypes[a].posts.length;});
+
+    closingKeys.forEach(function(type) {
+      var ct = closingTypes[type];
+      var cp = ct.posts;
       var avg = cp.reduce(function(s,p){return s+eng(p);},0) / cp.length;
       var sorted = cp.slice().sort(function(a,b){return eng(b)-eng(a);});
-      html += '<div style="margin:8px 0 12px;padding-left:14px;border-left:3px solid var(--blue);">';
-      html += '<strong>' + esc(type) + '</strong> (' + cp.length + ' posts, ' + avg.toFixed(1) + ' avg eng.)<br>';
-      var exCount = Math.min(2, sorted.length);
+
+      html += '<div class="report-subsection"><h4>' + type + '</h4>';
+      html += '<p class="report-prose">Used in ' + cp.length + ' posts (' + Math.round(cp.length/qual.length*100) + '%) \u2014 ' + ct.desc + '. Average engagement: ' + avg.toFixed(0) + '.</p>';
+
+      var exCount = Math.min(4, sorted.length);
       for (var i = 0; i < exCount; i++) {
         var lines = sorted[i].text.trim().split(/\n/).filter(function(l){return l.trim();});
         var lastLine = lines.length > 0 ? lines[lines.length-1] : '';
-        html += '<span style="font-style:italic;color:#475569;font-size:12px;">\u201C' + esc(trunc(lastLine, 100)) + '\u201D</span> <span style="font-size:11px;color:#94a3b8;">\u2014 ' + eng(sorted[i]) + ' eng.</span><br>';
+        html += rq(sorted[i], trunc(lastLine, 150));
       }
       html += '</div>';
     });
+
     // What they never do
-    var neverClose = Object.keys(closingTypes).filter(function(t){return closingTypes[t].length === 0;});
+    var neverClose = Object.keys(closingTypes).filter(function(t){return closingTypes[t].posts.length === 0;});
     if (neverClose.length > 0) {
-      html += '<p>You <strong>never</strong> close with: ' + neverClose.join(', ').toLowerCase() + '.</p>';
+      html += '<div class="report-subsection"><h4>What You Never Do in Closings</h4>';
+      html += '<p class="report-prose">You almost never close with: <strong>' + neverClose.join(', ').replace(/The /g, '').toLowerCase() + '</strong>. ';
+      var genericCTA = qual.filter(function(p) { return /\b(follow me for more|share this|repost if you agree|like and share)\b/i.test(p.text); });
+      if (genericCTA.length < 2) html += 'You don\u2019t do the engagement-bait format \u2014 your closings feel like the last line of a conversation, not a marketing prompt.';
+      html += '</p></div>';
     }
     html += '</div>';
 
-    // ─── 6. Sentence Rhythm ───
-    html += '<div class="insight purple" style="margin-bottom:16px;"><h3>\uD83C\uDFB5 6. Sentence Rhythm</h3>';
+    // ═══════════════════════════════════════════════════════════════
+    // 6. SENTENCE RHYTHM
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>6. Sentence Rhythm</h3>';
+
     var allSentLengths = [];
     qual.forEach(function(p) {
       var sents = p.text.split(/(?<=[.!?])\s+/).filter(function(s){return s.trim().length > 3;});
@@ -1121,134 +1223,157 @@
     var shortPct = allSentLengths.length > 0 ? Math.round(shortSents/allSentLengths.length*100) : 0;
     var longPct = allSentLengths.length > 0 ? Math.round(longSents/allSentLengths.length*100) : 0;
 
-    html += '<p style="margin-bottom:8px;"><strong>Average sentence length:</strong> ' + avgSentLen + ' words</p>';
-    html += '<p style="margin-bottom:8px;"><strong>Short punchy sentences (\u22645 words):</strong> ' + shortPct + '% &middot; <strong>Long sentences (20+ words):</strong> ' + longPct + '%</p>';
-    html += '<p style="margin-bottom:8px;">' + (shortPct > 30 ? 'You favour short, punchy sentences. This creates urgency and momentum.' :
-      longPct > 25 ? 'You tend toward longer, more developed sentences. This creates a more measured, analytical feel.' :
-      'You mix short and long sentences effectively, creating natural rhythm.') + '</p>';
+    html += '<p class="report-prose">' + (shortPct > 30 ? 'You have a distinctive cadence: <strong>build with medium sentences, then punch with a short one.</strong> Your average sentence is ' + avgSentLen + ' words, but ' + shortPct + '% of your sentences are 5 words or fewer. This creates urgency and momentum \u2014 your writing has a spoken-word feel.' :
+      longPct > 25 ? 'You tend toward longer, more developed sentences (average ' + avgSentLen + ' words, with ' + longPct + '% running 20+ words). This creates a measured, analytical cadence that rewards careful reading.' :
+      'You mix short and long sentences effectively (average ' + avgSentLen + ' words). <strong>' + shortPct + '%</strong> of your sentences are short punches (\u22645 words) and <strong>' + longPct + '%</strong> are extended (20+ words). This variation creates natural rhythm.') + '</p>';
+
+    // Quote passages showing rhythm
+    html += '<div class="report-subsection"><h4>Your Rhythm in Action</h4>';
+    var rhythmExamples = topQ.slice(0, 5);
+    var rhythmShown = 0;
+    for (var ri = 0; ri < rhythmExamples.length && rhythmShown < 2; ri++) {
+      var rSents = rhythmExamples[ri].text.split(/(?<=[.!?])\s+/).slice(0, 5);
+      if (rSents.length >= 3) {
+        html += rq(rhythmExamples[ri], rSents.join(' ').substring(0, 280) + (rSents.join(' ').length > 280 ? '...' : ''), 'From your #' + (ri+1) + ' post by engagement');
+        rhythmShown++;
+      }
+    }
+    html += '</div>';
 
     // Stylistic tics
     var emDashCount = (allText.match(/\u2014|--/g) || []).length;
     var ellipsisCount = (allText.match(/\.{3}|\u2026/g) || []).length;
     var parenCount = (allText.match(/\(/g) || []).length;
+    var exclCount = (allText.match(/!{2,}/g) || []).length;
     var tics = [];
-    if (emDashCount >= 3) tics.push('em dashes (\u00D7' + emDashCount + ')');
-    if (ellipsisCount >= 3) tics.push('ellipses (\u00D7' + ellipsisCount + ')');
-    if (parenCount >= 5) tics.push('parenthetical asides (\u00D7' + parenCount + ')');
-    if (tics.length > 0) {
-      html += '<p><strong>Stylistic habits:</strong> ' + tics.join(', ') + '</p>';
-    }
+    if (emDashCount >= 3) tics.push({ name: 'Em dashes', count: emDashCount, desc: 'for parenthetical asides and dramatic pauses' });
+    if (ellipsisCount >= 3) tics.push({ name: 'Trailing ellipses', count: ellipsisCount, desc: 'creating suspense or trailing off' });
+    if (parenCount >= 5) tics.push({ name: 'Parenthetical asides', count: parenCount, desc: 'injecting commentary within sentences' });
+    if (exclCount >= 3) tics.push({ name: 'Multiple exclamation marks', count: exclCount, desc: 'for emphasis and energy' });
 
-    // Quote a passage showing their rhythm
-    var rhythmPost = topQ[0];
-    if (rhythmPost) {
-      var sents = rhythmPost.text.split(/(?<=[.!?])\s+/).slice(0, 4);
-      if (sents.length >= 2) {
-        html += '<div style="margin-top:8px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-style:italic;font-size:12px;color:#475569;border-left:3px solid #7c3aed;">';
-        html += '<div style="font-style:normal;font-weight:700;font-size:11px;color:#7c3aed;margin-bottom:4px;">EXAMPLE RHYTHM (from your top post)</div>';
-        html += esc(sents.join(' ').substring(0, 300)) + (sents.join(' ').length > 300 ? '...' : '');
-        html += '</div>';
-      }
+    if (tics.length > 0) {
+      html += '<div class="report-subsection"><h4>Conversational Interruptions</h4>';
+      html += '<p class="report-prose">You frequently interrupt your own flow to add colour:</p>';
+      html += '<ul class="report-sig-list">';
+      tics.forEach(function(t) {
+        html += '<li><strong>' + t.name + '</strong> (\u00D7' + t.count + ') \u2014 <em>' + t.desc + '</em></li>';
+      });
+      html += '</ul>';
+      html += '<p class="report-prose">This creates a spoken-word feel. Your posts read like you\u2019re talking, not writing.</p>';
+      html += '</div>';
     }
     html += '</div>';
 
-    // ─── 7. What You Consistently Avoid ───
-    html += '<div class="insight green" style="margin-bottom:16px;"><h3>\uD83D\uDEAB 7. What You Consistently Avoid</h3>';
+    // ═══════════════════════════════════════════════════════════════
+    // 7. WHAT YOU CONSISTENTLY AVOID
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>7. What You Consistently Avoid</h3>';
+
     var avoids = [];
     var emojiPosts = qual.filter(function(p) { return /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(p.text); });
-    if (emojiPosts.length < qual.length * 0.15) avoids.push('Heavy emoji use \u2014 your posts stay clean and professional');
+    if (emojiPosts.length < qual.length * 0.2) avoids.push({ title: 'Emoji overload', desc: 'You use emojis sparingly. Your best posts use few or none \u2014 emoji-heavy posts don\u2019t outperform your text-driven content.' });
     var urlPosts = qual.filter(function(p) { return /https?:\/\//.test(p.text); });
-    if (urlPosts.length < qual.length * 0.1) avoids.push('External links \u2014 you keep content native to LinkedIn');
+    if (urlPosts.length < qual.length * 0.1) avoids.push({ title: 'External links', desc: 'You keep content native to LinkedIn rather than linking out. Only ' + urlPosts.length + ' of ' + qual.length + ' posts contain URLs.' });
     var hashPosts = qual.filter(function(p) { return (p.text.match(/#[a-zA-Z]/g) || []).length > 5; });
-    if (hashPosts.length < qual.length * 0.1) avoids.push('Hashtag stuffing \u2014 you use hashtags sparingly if at all');
-    if (hedges < 5) avoids.push('Hedge words (maybe, perhaps, might) \u2014 you take firm positions');
+    if (hashPosts.length < qual.length * 0.1) avoids.push({ title: 'Hashtag stuffing', desc: 'You use hashtags sparingly if at all. You don\u2019t pad posts with walls of hashtags for algorithmic reach.' });
+    if (hedges < 5) avoids.push({ title: 'Hedge words', desc: 'Words like "maybe," "perhaps," and "might" barely appear (' + hedges + ' total). You take firm positions instead of equivocating.' });
     var humbleBrag = qual.filter(function(p) { return /\b(humbled|blessed|grateful to announce|excited to share|thrilled to announce)\b/i.test(p.text); });
-    if (humbleBrag.length < 2) avoids.push('"Humblebragging" language (humbled, blessed, thrilled to announce)');
-    var genericCTA = qual.filter(function(p) { return /\b(like and share|follow me for more|repost if you agree|hit the bell)\b/i.test(p.text); });
-    if (genericCTA.length < 2) avoids.push('Generic engagement bait ("like and share", "repost if you agree")');
-    if (listPosts.length < qual.length * 0.15) avoids.push('Listicle-style posts \u2014 you prefer prose over bullet points');
-    else if (listPosts.length > qual.length * 0.7) avoids.push('Long unbroken prose \u2014 you structure with lists and bullets');
+    if (humbleBrag.length < 2) avoids.push({ title: 'The humble-brag format', desc: 'You don\u2019t do "Thrilled to announce\u2026" or "Humbled to share\u2026" posts. When you have news, you lead with the substance, not the self-congratulation.' });
+    var genericCTA2 = qual.filter(function(p) { return /\b(like and share|follow me for more|repost if you agree|hit the bell|share this with)\b/i.test(p.text); });
+    if (genericCTA2.length < 2) avoids.push({ title: 'Generic engagement bait', desc: 'No "Like and share!" or "Repost if you agree \u267B\uFE0F" prompts. Your engagement comes from content quality, not begging for interactions.' });
+    if (listPosts < qual.length * 0.15) avoids.push({ title: 'Listicle-style posts', desc: 'You prefer conversational prose over "Top 10 reasons\u2026" formatting. Your arguments flow as narrative, not numbered lists.' });
     var quotePosts = qual.filter(function(p) { return /^[""\u201C]/.test(p.text.trim()); });
-    if (quotePosts.length < 2) avoids.push('Opening with someone else\u2019s quote');
-    var clichePosts = qual.filter(function(p) { return /\b(game changer|move the needle|circle back|deep dive|at the end of the day|low-hanging fruit)\b/i.test(p.text); });
-    if (clichePosts.length < 2) avoids.push('Business clich\u00E9s (game changer, move the needle, deep dive)');
+    if (quotePosts.length < 2) avoids.push({ title: 'Opening with someone else\u2019s quote', desc: 'You lead with your own voice, not borrowed authority. Quote-led openers are virtually absent from your writing.' });
+    var clichePosts = qual.filter(function(p) { return /\b(game changer|move the needle|circle back|deep dive|at the end of the day|low-hanging fruit|leveraging|synergies)\b/i.test(p.text); });
+    if (clichePosts.length < 2) avoids.push({ title: 'Corporate jargon and buzzword stacking', desc: 'You never write "leveraging synergies" or "holistic ecosystem approach." Your language is plain and direct.' });
+    var gratefulPosts = qual.filter(function(p) { return /\b(i'm grateful|so grateful|grateful for this|thankful for)\b/i.test(p.text); });
+    if (gratefulPosts.length < 2) avoids.push({ title: '"I\u2019m grateful" engagement bait', desc: 'No "I\u2019m so grateful for this community" padding. Your posts have substance, not sentiment.' });
+    var threadPosts = qual.filter(function(p) { return /^1[\/.)]\s/m.test(p.text.trim()); });
+    if (threadPosts.length < 2) avoids.push({ title: 'Thread-style formatting', desc: 'You write single, complete posts \u2014 not "1/ Here\u2019s what no one is talking about\u2026" threads.' });
 
     if (avoids.length > 0) {
-      html += '<ul style="padding-left:20px;font-size:13px;color:#475569;">';
-      avoids.forEach(function(a) { html += '<li style="margin-bottom:4px;">' + a + '</li>'; });
+      html += '<ul class="report-avoid-list">';
+      avoids.forEach(function(a) {
+        html += '<li><strong>' + a.title + '</strong> \u2014 ' + a.desc + '</li>';
+      });
       html += '</ul>';
-    } else {
-      html += '<p style="color:#94a3b8;">Not enough data to identify consistent avoidance patterns.</p>';
     }
     html += '</div>';
 
-    // ─── 8. Engagement Correlations ───
-    html += '<div class="insight orange" style="margin-bottom:16px;"><h3>\uD83D\uDCC8 8. Engagement Correlations</h3>';
-    html += '<p style="margin-bottom:6px;"><strong>What your top ' + top10.length + ' posts have in common:</strong></p><ul style="padding-left:20px;font-size:13px;color:#475569;margin-bottom:10px;">';
+    // ═══════════════════════════════════════════════════════════════
+    // 8. ENGAGEMENT CORRELATIONS
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-section"><h3>8. Correlation Between Style Choices and Engagement</h3>';
 
-    // Analyze top posts for patterns
+    // Top posts analysis
     var topAvgWc = Math.round(top10.reduce(function(s,p){return s+wc(p.text);},0) / top10.length);
-    html += '<li>Average length: ' + topAvgWc + ' words' + (topAvgWc > avgWc * 1.15 ? ' (longer than your average)' : topAvgWc < avgWc * 0.85 ? ' (shorter than your average)' : '') + '</li>';
-
     var topLineBreaks = top10.filter(function(p){return p.text.split(/\n/).filter(function(l){return l.trim();}).length >= 5;}).length;
-    html += '<li>' + Math.round(topLineBreaks/top10.length*100) + '% use generous white space</li>';
-
     var topQuestions = top10.filter(function(p){return /\?/.test(p.text);}).length;
-    html += '<li>' + Math.round(topQuestions/top10.length*100) + '% contain questions</li>';
-
     var topStories = top10.filter(function(p){return /\b(I |my |when I|years? ago)/i.test(p.text);}).length;
-    html += '<li>' + Math.round(topStories/top10.length*100) + '% include personal stories</li>';
+    var topDataP = top10.filter(function(p){return /\d{2,}[%$]|\$[\d,]+|\d+x/i.test(p.text);}).length;
 
-    var topData = top10.filter(function(p){return /\d{2,}[%$]|\$[\d,]+|\d+x/i.test(p.text);}).length;
-    html += '<li>' + Math.round(topData/top10.length*100) + '% use specific numbers or data</li>';
-    html += '</ul>';
+    var topOpeners = {};
+    top10.forEach(function(p) { var t = p._hookType || 'Statement'; topOpeners[t] = (topOpeners[t]||0)+1; });
+    var topOpenerType = Object.keys(topOpeners).sort(function(a,b){return topOpeners[b]-topOpeners[a];})[0] || bestOpener;
 
-    // Bottom quartile patterns
+    html += '<div class="report-subsection"><h4>What Your Top ' + top10.length + ' Posts Have in Common</h4>';
+    html += '<p class="report-prose">Your highest-performing posts share these characteristics:</p>';
+    html += '<ol style="padding-left:20px;margin:10px 0 16px;">';
+    html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;"><strong>A ' + esc(topOpenerType).toLowerCase() + ' hook</strong> \u2014 ' + Math.round((topOpeners[topOpenerType]||0)/top10.length*100) + '% open this way</li>';
+    if (topDataP > top10.length * 0.3) html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;"><strong>Specific data and numbers</strong> \u2014 ' + Math.round(topDataP/top10.length*100) + '% use concrete figures</li>';
+    if (topStories > top10.length * 0.3) html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;"><strong>Personal stories</strong> \u2014 ' + Math.round(topStories/top10.length*100) + '% include first-person experience</li>';
+    html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;"><strong>' + topAvgWc + '-word sweet spot</strong>' + (topAvgWc > avgWc * 1.15 ? ' (longer than your average)' : topAvgWc < avgWc * 0.85 ? ' (shorter than your average)' : '') + '</li>';
+    if (topLineBreaks > top10.length * 0.4) html += '<li style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:4px;"><strong>Generous white space</strong> \u2014 ' + Math.round(topLineBreaks/top10.length*100) + '% use mobile-friendly formatting</li>';
+    html += '</ol></div>';
+
+    // Bottom quartile
     if (botQ.length >= 3) {
       var botAvgWc = Math.round(botQ.reduce(function(s,p){return s+wc(p.text);},0) / botQ.length);
-      html += '<p style="margin-bottom:6px;"><strong>Bottom quartile patterns:</strong></p><ul style="padding-left:20px;font-size:13px;color:#475569;margin-bottom:10px;">';
-      html += '<li>Average length: ' + botAvgWc + ' words</li>';
-      var botStories = botQ.filter(function(p){return /\b(I |my |when I)/i.test(p.text);}).length;
-      html += '<li>' + Math.round(botStories/botQ.length*100) + '% include personal stories</li>';
-      var botQuestions = botQ.filter(function(p){return /\?/.test(p.text);}).length;
-      html += '<li>' + Math.round(botQuestions/botQ.length*100) + '% contain questions</li>';
-      html += '</ul>';
+      var botEmoji = botQ.filter(function(p) { return /[\u{1F300}-\u{1F9FF}]/u.test(p.text); }).length;
+
+      html += '<div class="report-subsection"><h4>What Doesn\u2019t Move the Needle</h4>';
+      html += '<ul class="report-avoid-list">';
+      if (Math.abs(topAvgWc - botAvgWc) < avgWc * 0.15) html += '<li><strong>Word count doesn\u2019t matter much</strong> \u2014 your top and bottom posts average similar lengths (' + topAvgWc + ' vs ' + botAvgWc + ' words)</li>';
+      if (botEmoji > botQ.length * 0.3 && emojiPosts.length < qual.length * 0.3) html += '<li><strong>Emojis are neutral to slightly negative</strong> \u2014 your bottom-quartile posts actually use emojis more than your top performers</li>';
+      html += '<li><strong>Questions in the opening</strong> \u2014 your strongest openers tend to be ' + esc(bestOpener).toLowerCase() + 's, not questions</li>';
+      html += '</ul></div>';
     }
 
     // Engagement formula
-    html += '<div class="hook-summary" style="margin-top:12px;"><h3>\uD83C\uDFAF Your Engagement Formula</h3><p>';
-    var formula = [];
-    if (topAvgWc > avgWc * 1.1) formula.push('write longer (' + topAvgWc + '+ words)');
-    else if (topAvgWc < avgWc * 0.9) formula.push('keep it concise (' + topAvgWc + ' words)');
-    if (topStories > top10.length * 0.5) formula.push('lead with personal stories');
-    if (topData > top10.length * 0.4) formula.push('include specific numbers');
-    if (topQuestions > top10.length * 0.5) formula.push('ask questions');
-    if (topLineBreaks > top10.length * 0.6) formula.push('use generous white space');
-    formula.push('open with a ' + esc(bestOpener).toLowerCase() + ' hook');
-    html += 'Your best posts tend to: <strong>' + formula.join(', ') + '</strong>.';
-    html += '</p></div>';
+    html += '<div class="report-callout"><h4>Your Engagement Formula</h4>';
+    var formulaParts = [];
+    formulaParts.push(esc(bestOpener) + ' hook');
+    if (moves[0].posts.length > qual.length * 0.3) formulaParts.push('your ' + moves[0].label);
+    if (topStories > top10.length * 0.4) formulaParts.push('personal perspective');
+    var bestCloser = closingKeys.length > 0 ? closingKeys[0].replace('The ', '').toLowerCase() : 'strong closing';
+    formulaParts.push(bestCloser);
+    html += '<p>Your best posts follow this pattern: <strong>[' + formulaParts.join('] + [') + ']</strong></p>';
+    html += '</div>';
     html += '</div>';
 
-    // ─── Writing Instructions Summary ───
-    html += '<div class="hook-summary" style="margin-top:16px;"><h3>\u270D\uFE0F Writing Instructions Summary</h3>';
-    html += '<p style="margin-bottom:8px;">To write in this voice, follow these rules:</p><ol style="padding-left:20px;font-size:13px;color:#475569;line-height:1.8;">';
-    html += '<li>Open with a <strong>' + esc(bestOpener).toLowerCase() + '</strong> hook \u2014 this is your strongest opener style.</li>';
-    if (shortPct > 30) html += '<li>Use short, punchy sentences (many under 5 words). Create rhythm and urgency.</li>';
-    else html += '<li>Mix sentence lengths \u2014 pair longer analytical sentences with short impactful ones.</li>';
-    if (iCount > youCount * 1.5) html += '<li>Lead with personal experience and first-person perspective ("I did X, here\'s what I learned").</li>';
-    else if (youCount > iCount) html += '<li>Address the reader directly. Use "you" and "your" frequently.</li>';
-    if (lineBreakPosts > qual.length * 0.4) html += '<li>Use generous white space. One idea per line. Let the post breathe.</li>';
-    if (dataPosts.length > qual.length * 0.3) html += '<li>Include specific numbers and data points to back up claims.</li>';
-    if (storyPosts.length > qual.length * 0.3) html += '<li>Ground arguments in real stories and personal experience, not abstract advice.</li>';
-    if (strong > hedges * 1.5) html += '<li>Take strong positions. Avoid hedging with "maybe" or "perhaps." Be direct.</li>';
-    else if (hedges > strong) html += '<li>Keep a measured, nuanced tone. Acknowledge complexity rather than oversimplifying.</li>';
-    html += '<li>Target ' + avgWc + ' words per post (your sweet spot).</li>';
-    if (qClosePosts > qual.length * 0.3) html += '<li>End with a specific question to drive comments.</li>';
-    if (sigPhrases.length >= 3) html += '<li>Incorporate signature phrases: "' + esc(sigPhrases.slice(0,3).join('", "')) + '".</li>';
-    if (avoids.length >= 2) html += '<li>Avoid: ' + avoids.slice(0,3).map(function(a){return a.split(' \u2014 ')[0].toLowerCase();}).join(', ') + '.</li>';
-    html += '<li>Match the overall tone: ' + voiceTraits.slice(0,2).join(', ') + '.</li>';
+    // ═══════════════════════════════════════════════════════════════
+    // WRITING INSTRUCTIONS SUMMARY
+    // ═══════════════════════════════════════════════════════════════
+    html += '<div class="report-callout" style="margin-top:28px;"><h4>\u270D\uFE0F Writing Instructions Summary</h4>';
+    html += '<p style="margin-bottom:10px;">To write in this voice, follow these rules:</p>';
+    html += '<ol>';
+    html += '<li><strong>Open with a ' + esc(bestOpener).toLowerCase() + ' hook</strong> \u2014 this is your strongest opener style. Never start with throat-clearing.</li>';
+    if (shortPct > 30) html += '<li><strong>Write in short paragraphs (1\u20132 sentences)</strong> \u2014 mobile-first, generous white space. Use single-sentence paragraphs for emphasis.</li>';
+    else html += '<li><strong>Mix sentence lengths</strong> \u2014 pair longer analytical sentences with short impactful ones for rhythm.</li>';
+    if (strong > hedges * 1.5) html += '<li><strong>Take clear positions</strong> \u2014 no hedging, no "time will tell." Commit to your argument.</li>';
+    else if (hedges > strong) html += '<li><strong>Acknowledge nuance</strong> \u2014 your measured tone is a strength. Keep showing both sides before drawing conclusions.</li>';
+    if (sigPhrases.length >= 3) html += '<li><strong>Use your signature phrases naturally</strong> \u2014 "' + esc(sigPhrases.slice(0,4).join('," "')) + '."</li>';
+    if (dataPosts.length > qual.length * 0.3) html += '<li><strong>Include at least one specific number or comparison</strong> to anchor the argument. Do the maths for the reader.</li>';
+    if (iCount > youCount * 1.5) html += '<li><strong>Lead from personal experience</strong> \u2014 "I did X, here\u2019s what I learned" is your natural mode.</li>';
+    else if (youCount > iCount) html += '<li><strong>Address the reader directly</strong> \u2014 use "you" and "your" frequently. Make them feel spoken to.</li>';
+    if (storyPosts.length > qual.length * 0.3) html += '<li><strong>Ground arguments in real stories</strong>, not abstract advice.</li>';
+    if (concessionPosts && concessionPosts.length > qual.length * 0.15) html += '<li><strong>Acknowledge objections briefly, then dismiss or reframe</strong> \u2014 concede the point, then pivot to the bigger picture.</li>';
+    html += '<li><strong>Target ' + avgWc + ' words</strong> per post (your sweet spot).</li>';
+    html += '<li><strong>Close with a ' + bestCloser + '</strong> \u2014 not a generic CTA. Make the last line memorable.</li>';
+    if (avoids.length >= 2) html += '<li><strong>Avoid:</strong> ' + avoids.slice(0,4).map(function(a){return a.title.toLowerCase();}).join(', ') + '.</li>';
     html += '</ol></div>';
 
+    html += '</div>'; // close .report
     container.innerHTML = html;
   }
 
