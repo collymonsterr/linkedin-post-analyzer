@@ -625,15 +625,6 @@
         </div>
       </div>
 
-      <!-- Missing views diagnostic -->
-      <div class="card" id="missingViewsCard" style="display:none;">
-        <h2><span class="icon">&#x1F50D;</span> Posts With Missing View Data <span class="collapse-chevron">&#x25BC;</span></h2>
-        <div class="card-body"><p class="subtitle">These posts had no impressions/views data scraped. Click to check them on LinkedIn. <span id="missingDebugHint" style="display:none;">Debug classes found in the DOM are shown to help diagnose the issue.</span></p>
-        <div style="overflow-x:auto"><table id="missingViewsTable"><thead><tr>
-          <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Likes</th><th style="text-align:right">Comments</th><th>Debug Info</th>
-        </tr></thead><tbody></tbody></table></div></div>
-      </div>
-
       <!-- Engagement + Length charts -->
       <div class="two-col" id="engLenRow" data-nav="&#x1F4C8;" data-nav-label="Eng. & Length">
         <div class="card">
@@ -685,6 +676,15 @@
       <div class="card" id="freqCard" data-nav="&#x1F4C5;" data-nav-label="Frequency">
         <h2><span class="icon">&#x1F4C5;</span> Posting Frequency <span class="collapse-chevron">&#x25BC;</span></h2>
         <div class="card-body"><div class="freq-detail" id="frequency"></div></div>
+      </div>
+
+      <!-- Missing views diagnostic (at bottom) -->
+      <div class="card" id="missingViewsCard" style="display:none;">
+        <h2><span class="icon">&#x1F50D;</span> Posts With Missing View Data <span class="collapse-chevron">&#x25BC;</span></h2>
+        <div class="card-body"><p class="subtitle">These posts had no impressions/views data scraped. Click to check them on LinkedIn. <span id="missingDebugHint" style="display:none;">Debug classes found in the DOM are shown to help diagnose the issue.</span></p>
+        <div style="overflow-x:auto"><table id="missingViewsTable"><thead><tr>
+          <th>#</th><th>Summary</th><th>Date</th><th style="text-align:right">Likes</th><th style="text-align:right">Comments</th><th>Debug Info</th>
+        </tr></thead><tbody></tbody></table></div></div>
       </div>
 
     </div><!-- /tabOverview -->

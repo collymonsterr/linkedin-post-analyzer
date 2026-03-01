@@ -2469,7 +2469,7 @@
       var hasDebug = missingPosts.some(function(p){return p._debug;});
       if (hasDebug) document.getElementById('missingDebugHint').style.display = '';
       var mvBody = document.querySelector('#missingViewsTable tbody');
-      missingPosts.slice(0, 20).forEach(function(p, i) {
+      missingPosts.slice(0, 7).forEach(function(p, i) {
         var tr = document.createElement('tr');
         var summary = esc(p._summary || trunc(p.text, 80));
         var link = p.url ? '<a href="'+esc(p.url)+'" target="_blank">'+summary+'</a>' : summary;
@@ -2481,9 +2481,9 @@
           '<td style="font-size:11px;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;">'+esc(p._debug||'none found')+'</td>';
         mvBody.appendChild(tr);
       });
-      if (missingPosts.length > 20) {
+      if (missingPosts.length > 7) {
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="6" style="text-align:center;color:#94a3b8;padding:12px;">...and '+(missingPosts.length-20)+' more</td>';
+        tr.innerHTML = '<td colspan="6" style="text-align:center;color:#94a3b8;padding:12px;">...and '+(missingPosts.length-7)+' more</td>';
         mvBody.appendChild(tr);
       }
     }
