@@ -2582,9 +2582,25 @@
   }
 
   // ── Load & go ─────────────────────────────────────────────────────
-  chrome.storage.local.get('linkedinPosts', function(result) {
-    var posts = result.linkedinPosts;
+  var _urlParams = new URLSearchParams(window.location.search);
+  var _dataSource = _urlParams.get('source'); // 'company' or null
+  var _companyId = _urlParams.get('id') || '';
+  var _storageKey = _dataSource === 'company' ? 'linkedinPosts_company' : 'linkedinPosts';
+
+  chrome.storage.local.get(_storageKey, function(result) {
+    var posts = result[_storageKey];
     if (!posts || !posts.length) { document.getElementById('loading').textContent = 'No data found. Please scrape some posts first.'; return; }
+
+    // Show data source banner for company pages
+    if (_dataSource === 'company') {
+      var banner = document.getElementById('dataSourceBanner');
+      if (banner) {
+        var label = _companyId ? _companyId.replace(/-/g, ' ') : 'Company';
+        banner.innerHTML = '<span class="banner-icon">&#x1F3E2;</span> Analysing <strong>' + esc(label) + '</strong> company posts (' + posts.length + ' posts)';
+        banner.classList.remove('hidden');
+      }
+    }
+
     render(posts);
     initFilter();
   });

@@ -3,7 +3,7 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
 
 (async function() {
   const MY_GEN = window._scraperGeneration;
-  const config = window._scraperConfig || { limitType: 'none', limitValue: 0 };
+  const config = window._scraperConfig || { limitType: 'none', limitValue: 0, pageType: 'personal', pageId: '' };
 
   function alive() { return MY_GEN === window._scraperGeneration; }
 
@@ -32,7 +32,7 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
 
   function saveProgress(status, posts, error) {
     try {
-      var state = { status: status, posts: posts, count: posts.length, error: error || null };
+      var state = { status: status, posts: posts, count: posts.length, error: error || null, pageType: config.pageType, pageId: config.pageId };
       if (status === 'complete') state.scrapedAt = Date.now();
       chrome.storage.local.set({ scraperState: state });
     } catch (e) { /* extension context may be invalidated */ }
@@ -239,9 +239,12 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
         seenUrns.add(urn);
 
         // Skip reposts/reshares — look for "reposted" in the header area
-        const headerEl = container.querySelector('.update-components-header')
-          || container.querySelector('.feed-shared-header');
-        if (headerEl && /reposted/i.test(headerEl.innerText)) continue;
+        // (Company pages: keep reposts — they're intentional content curation)
+        if (config.pageType !== 'company') {
+          const headerEl = container.querySelector('.update-components-header')
+            || container.querySelector('.feed-shared-header');
+          if (headerEl && /reposted/i.test(headerEl.innerText)) continue;
+        }
 
         const post = await scrapePost(container);
         posts.push(post);

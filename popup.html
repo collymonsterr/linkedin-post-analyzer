@@ -182,18 +182,39 @@
       text-decoration: underline;
     }
     .btn-text:hover { color: #0a66c2; }
+    .page-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .page-badge.personal {
+      background: #e8f0fe;
+      color: #0a66c2;
+    }
+    .page-badge.company {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .page-badge.hidden { display: none !important; }
   </style>
 </head>
 <body>
   <h1>LinkedIn Post Analyzer</h1>
-  <p class="subtitle">Navigate to your LinkedIn activity page, then scrape.</p>
+  <p class="subtitle" id="subtitleText">Navigate to your LinkedIn activity page, then scrape.</p>
+
+  <div id="pageBadge" class="page-badge hidden"></div>
 
   <div id="onboarding" class="onboarding hidden">
     <div class="onboard-icon">&#x1F4CB;</div>
     <div class="onboard-title">How to use</div>
     <ol class="onboard-steps">
-      <li>Go to any LinkedIn profile</li>
-      <li>Click <strong>Activity</strong> &rarr; <strong>Posts</strong></li>
+      <li>Go to any LinkedIn profile or company page</li>
+      <li>Click <strong>Activity</strong> &rarr; <strong>Posts</strong> (or <strong>Posts</strong> on company pages)</li>
       <li>Come back here and hit <strong>Start Scraping</strong></li>
     </ol>
     <div class="onboard-hint">You're not on LinkedIn right now. Open LinkedIn first, then reopen this popup.</div>

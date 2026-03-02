@@ -262,6 +262,15 @@
   }
   .action-bar button:hover { background: rgba(255,255,255,0.3); border-color: #fff; }
   /* ── Filter bar ── */
+  .data-source-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; margin: 0 auto 16px; max-width: 1200px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #f59e0b; border-radius: 8px;
+    font-size: 14px; font-weight: 600; color: #92400e;
+  }
+  .data-source-banner .banner-icon { font-size: 18px; }
+  .data-source-banner.hidden { display: none !important; }
   .filter-bar {
     display: flex; align-items: center; gap: 8px;
     margin-bottom: 20px; padding: 12px 16px;
@@ -559,6 +568,8 @@
       <button id="downloadHtmlBtn">&#x1F4E5; Download Report</button>
     </div>
   </div>
+
+  <div id="dataSourceBanner" class="data-source-banner hidden"></div>
 
   <!-- Section Navigator -->
   <nav class="section-nav" id="sectionNav"></nav>

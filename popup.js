@@ -1,6 +1,8 @@
 let posts = [];
 let activeTabId = null;
 let isScraping = false;
+let currentPageType = 'personal'; // 'personal' or 'company'
+let currentPageId = '';            // username or company slug
 
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
@@ -19,6 +21,8 @@ const cachedTitle = document.getElementById('cachedTitle');
 const cachedMeta = document.getElementById('cachedMeta');
 const reanalyzeBtn = document.getElementById('reanalyzeBtn');
 const freshScrapeBtn = document.getElementById('freshScrapeBtn');
+const pageBadge = document.getElementById('pageBadge');
+const subtitleText = document.getElementById('subtitleText');
 
 function timeAgo(timestamp) {
   if (!timestamp) return '';
@@ -31,6 +35,38 @@ function timeAgo(timestamp) {
   const days = Math.floor(hours / 24);
   if (days < 7) return days + ' day' + (days > 1 ? 's' : '') + ' ago';
   return new Date(timestamp).toLocaleDateString();
+}
+
+// Detect page type from URL
+function detectPageType(url) {
+  if (!url) return { pageType: 'personal', pageId: '' };
+  const companyMatch = url.match(/linkedin\.com\/company\/([^/?#]+)/);
+  if (companyMatch) return { pageType: 'company', pageId: companyMatch[1] };
+  const profileMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/);
+  if (profileMatch) return { pageType: 'personal', pageId: profileMatch[1] };
+  // On LinkedIn activity page directly
+  if (url.includes('linkedin.com')) return { pageType: 'personal', pageId: '' };
+  return { pageType: 'personal', pageId: '' };
+}
+
+// Show page type badge
+function showPageBadge(pageType, pageId) {
+  if (!pageBadge) return;
+  if (pageType === 'company') {
+    pageBadge.className = 'page-badge company';
+    pageBadge.innerHTML = '&#x1F3E2; Company Page' + (pageId ? ' — ' + pageId.replace(/-/g, ' ') : '');
+    pageBadge.classList.remove('hidden');
+    if (subtitleText) subtitleText.textContent = 'Scrape posts from this company page.';
+  } else if (pageId) {
+    pageBadge.className = 'page-badge personal';
+    pageBadge.innerHTML = '&#x1F4CB; Personal Profile';
+    pageBadge.classList.remove('hidden');
+  }
+}
+
+// Get storage key based on page type
+function getStorageKey() {
+  return currentPageType === 'company' ? 'linkedinPosts_company' : 'linkedinPosts';
 }
 
 // Radio button toggles for limit inputs
@@ -46,7 +82,7 @@ function getConfig() {
   let limitValue = 0;
   if (limitType === 'posts') limitValue = parseInt(document.getElementById('postsLimit').value, 10) || 50;
   if (limitType === 'months') limitValue = parseInt(document.getElementById('monthsLimit').value, 10) || 6;
-  return { limitType, limitValue };
+  return { limitType, limitValue, pageType: currentPageType, pageId: currentPageId };
 }
 
 function showError(msg) {
@@ -95,9 +131,15 @@ startBtn.addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url || !tab.url.includes('linkedin.com')) {
-      showError('Please navigate to your LinkedIn profile activity page first.');
+      showError('Please navigate to a LinkedIn profile or company page first.');
       return;
     }
+
+    // Detect page type from current URL
+    const detected = detectPageType(tab.url);
+    currentPageType = detected.pageType;
+    currentPageId = detected.pageId;
+
     activeTabId = tab.id;
     posts = [];
     isScraping = true;
@@ -107,7 +149,7 @@ startBtn.addEventListener('click', async () => {
     cachedDataSection.classList.add('hidden');
     updateUI();
 
-    // 1. Inject config as a global variable
+    // 1. Inject config as a global variable (now includes pageType + pageId)
     await chrome.scripting.executeScript({
       target: { tabId: activeTabId },
       func: (cfg) => { window._scraperConfig = cfg; },
@@ -159,7 +201,8 @@ csvBtn.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'linkedin-posts-' + new Date().toISOString().slice(0, 10) + '.csv';
+  const prefix = currentPageType === 'company' ? 'company-posts-' : 'linkedin-posts-';
+  a.download = prefix + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -178,7 +221,8 @@ jsonBtn.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'linkedin-posts-' + new Date().toISOString().slice(0, 10) + '.json';
+  const prefix = currentPageType === 'company' ? 'company-posts-' : 'linkedin-posts-';
+  a.download = prefix + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -186,17 +230,29 @@ jsonBtn.addEventListener('click', () => {
 // Analyze — store data and open dashboard
 analyzeBtn.addEventListener('click', () => {
   if (posts.length === 0) return;
-  chrome.storage.local.set({ linkedinPosts: posts }, () => {
-    const url = chrome.runtime.getURL('analyze.html');
+  const storageKey = getStorageKey();
+  const data = {};
+  data[storageKey] = posts;
+  chrome.storage.local.set(data, () => {
+    let url = chrome.runtime.getURL('analyze.html');
+    if (currentPageType === 'company') {
+      url += '?source=company&id=' + encodeURIComponent(currentPageId);
+    }
     chrome.tabs.create({ url });
   });
 });
 
-// Re-analyze — use cached data, store to linkedinPosts and open dashboard
+// Re-analyze — use cached data, store and open dashboard
 reanalyzeBtn.addEventListener('click', () => {
   if (posts.length === 0) return;
-  chrome.storage.local.set({ linkedinPosts: posts }, () => {
-    const url = chrome.runtime.getURL('analyze.html');
+  const storageKey = getStorageKey();
+  const data = {};
+  data[storageKey] = posts;
+  chrome.storage.local.set(data, () => {
+    let url = chrome.runtime.getURL('analyze.html');
+    if (currentPageType === 'company') {
+      url += '?source=company&id=' + encodeURIComponent(currentPageId);
+    }
     chrome.tabs.create({ url });
   });
 });
@@ -206,27 +262,39 @@ freshScrapeBtn.addEventListener('click', () => {
   cachedDataSection.classList.add('hidden');
 });
 
-// On popup open, check for cached data from previous scrape
-chrome.storage.local.get(['scraperState', 'linkedinPosts'], (result) => {
+// On popup open, check for cached data from previous scrapes (personal + company)
+chrome.storage.local.get(['scraperState', 'linkedinPosts', 'linkedinPosts_company'], (result) => {
   const scraperData = result.scraperState;
-  const analyzedData = result.linkedinPosts;
+  const personalData = result.linkedinPosts;
+  const companyData = result.linkedinPosts_company;
 
-  // Determine best cached data source
+  // Determine which cached data to show based on what's available
+  // Priority: scraper state (most recent) > analyzed data
   let cachedPosts = null;
   let cachedTimestamp = null;
+  let cachedPageType = 'personal';
 
   if (scraperData && scraperData.posts && scraperData.posts.length > 0) {
     cachedPosts = scraperData.posts;
     cachedTimestamp = scraperData.scrapedAt || null;
-  } else if (analyzedData && analyzedData.length > 0) {
-    cachedPosts = analyzedData;
+    cachedPageType = scraperData.pageType || 'personal';
+  } else if (companyData && companyData.length > 0) {
+    cachedPosts = companyData;
+    cachedPageType = 'company';
+  } else if (personalData && personalData.length > 0) {
+    cachedPosts = personalData;
+    cachedPageType = 'personal';
   }
 
   if (cachedPosts && cachedPosts.length > 0 && !isScraping) {
     // Show the cached data section
     cachedDataSection.classList.remove('hidden');
-    cachedTitle.textContent = cachedPosts.length + ' posts available';
+    const typeLabel = cachedPageType === 'company' ? ' company posts available' : ' posts available';
+    cachedTitle.textContent = cachedPosts.length + typeLabel;
     cachedMeta.textContent = cachedTimestamp ? 'Scraped ' + timeAgo(cachedTimestamp) : 'Previously scraped data';
+
+    // Set page type so analyze/reanalyze buttons route correctly
+    currentPageType = cachedPageType;
 
     // Restore posts for CSV/JSON/Analyze export
     posts = cachedPosts;
@@ -235,41 +303,80 @@ chrome.storage.local.get(['scraperState', 'linkedinPosts'], (result) => {
   } else if (scraperData && scraperData.posts && scraperData.posts.length > 0) {
     // Fallback: restore posts even without showing cached section
     posts = scraperData.posts;
+    currentPageType = scraperData.pageType || 'personal';
     progressEl.style.display = 'block';
     updateUI();
   }
 });
 
-// Onboarding — detect if user is on LinkedIn and auto-redirect if on profile page
+// Onboarding — detect if user is on LinkedIn and auto-redirect if on profile/company page
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   const tab = tabs[0];
   if (!tab || !tab.url || !tab.url.includes('linkedin.com')) {
     onboarding.classList.remove('hidden');
-  } else if (!tab.url.includes('/recent-activity/') && !tab.url.includes('/detail/recent-activity/')) {
-    // On LinkedIn but not on activity page
-    // Check if they're on a profile page — if so, offer auto-redirect
-    const profileMatch = tab.url.match(/linkedin\.com\/in\/([^/?#]+)/);
-    if (profileMatch) {
-      const activityUrl = 'https://www.linkedin.com/in/' + profileMatch[1] + '/recent-activity/all/';
-      onboarding.classList.remove('hidden');
-      onboarding.querySelector('.onboard-hint').innerHTML =
-        'You\'re on a profile page but not the activity feed.<br><br>' +
-        '<button id="goActivityBtn" style="background:#0a66c2;color:#fff;border:none;border-radius:16px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">Go to Activity Page →</button>';
-      // Wait for DOM update then attach handler
-      setTimeout(() => {
-        const goBtn = document.getElementById('goActivityBtn');
-        if (goBtn) {
-          goBtn.addEventListener('click', () => {
-            chrome.tabs.update(tab.id, { url: activityUrl }).then(() => {
-              window.close();
-            });
-          });
-        }
-      }, 0);
-    } else {
-      onboarding.classList.remove('hidden');
-      onboarding.querySelector('.onboard-hint').textContent =
-        'Tip: Navigate to a profile\'s Activity → Posts section for best results.';
+    return;
+  }
+
+  // Detect page type and show badge
+  const detected = detectPageType(tab.url);
+  currentPageType = detected.pageType;
+  currentPageId = detected.pageId;
+  showPageBadge(currentPageType, currentPageId);
+
+  // --- Company page handling ---
+  const companyMatch = tab.url.match(/linkedin\.com\/company\/([^/?#]+)/);
+  if (companyMatch) {
+    const slug = companyMatch[1];
+    // Check if already on posts page
+    if (tab.url.includes('/posts/') || tab.url.includes('/posts?')) {
+      // Ready to scrape — no onboarding needed
+      return;
     }
+    // On company page but not on posts — offer redirect
+    const postsUrl = 'https://www.linkedin.com/company/' + slug + '/posts/';
+    onboarding.classList.remove('hidden');
+    onboarding.querySelector('.onboard-hint').innerHTML =
+      'You\'re on a company page but not the posts feed.<br><br>' +
+      '<button id="goPostsBtn" style="background:#92400e;color:#fff;border:none;border-radius:16px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">Go to Company Posts →</button>';
+    setTimeout(() => {
+      const goBtn = document.getElementById('goPostsBtn');
+      if (goBtn) {
+        goBtn.addEventListener('click', () => {
+          chrome.tabs.update(tab.id, { url: postsUrl }).then(() => {
+            window.close();
+          });
+        });
+      }
+    }, 0);
+    return;
+  }
+
+  // --- Personal profile handling ---
+  if (tab.url.includes('/recent-activity/') || tab.url.includes('/detail/recent-activity/')) {
+    // Already on activity page — ready to scrape
+    return;
+  }
+
+  const profileMatch = tab.url.match(/linkedin\.com\/in\/([^/?#]+)/);
+  if (profileMatch) {
+    const activityUrl = 'https://www.linkedin.com/in/' + profileMatch[1] + '/recent-activity/all/';
+    onboarding.classList.remove('hidden');
+    onboarding.querySelector('.onboard-hint').innerHTML =
+      'You\'re on a profile page but not the activity feed.<br><br>' +
+      '<button id="goActivityBtn" style="background:#0a66c2;color:#fff;border:none;border-radius:16px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">Go to Activity Page →</button>';
+    setTimeout(() => {
+      const goBtn = document.getElementById('goActivityBtn');
+      if (goBtn) {
+        goBtn.addEventListener('click', () => {
+          chrome.tabs.update(tab.id, { url: activityUrl }).then(() => {
+            window.close();
+          });
+        });
+      }
+    }, 0);
+  } else {
+    onboarding.classList.remove('hidden');
+    onboarding.querySelector('.onboard-hint').textContent =
+      'Tip: Navigate to a profile\'s Activity → Posts section or a company page for best results.';
   }
 });
