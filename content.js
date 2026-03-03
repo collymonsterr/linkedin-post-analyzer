@@ -38,25 +38,122 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     } catch (e) { /* extension context may be invalidated */ }
   }
 
-  async function scrapePost(container) {
-    const urn = container.getAttribute('data-urn');
+  // --- Post container selectors ---
+  // LinkedIn uses different DOM structures for personal vs company pages.
+  // We try multiple selectors to find post containers.
+  const POST_SELECTORS = [
+    '[data-urn*="urn:li:activity"]',       // Personal activity feed
+    '[data-urn*="urn:li:ugcPost"]',         // UGC posts (company pages)
+    '[data-urn*="urn:li:share"]',           // Shared content
+    '.occludable-update',                   // Occlusion-managed feed items
+    '.feed-shared-update-v2',               // Feed update v2 containers
+    '.update-components-update',            // Update component wrapper
+    '[data-id*="urn:li:activity"]',         // data-id variant
+    '[data-id*="urn:li:ugcPost"]',          // data-id UGC variant
+  ];
+
+  // Find all post containers on the page using multiple selectors
+  function findPostContainers() {
+    // Try the primary selector first (most reliable for personal pages)
+    let posts = document.querySelectorAll('[data-urn*="urn:li:activity"]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-urn' };
+    }
+
+    // Try other URN-based selectors
+    posts = document.querySelectorAll('[data-urn*="urn:li:ugcPost"]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-urn' };
+    }
+
+    posts = document.querySelectorAll('[data-urn*="urn:li:share"]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-urn' };
+    }
+
+    // Try data-id variants (some LinkedIn pages use data-id instead of data-urn)
+    posts = document.querySelectorAll('[data-id*="urn:li:activity"]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-id' };
+    }
+
+    posts = document.querySelectorAll('[data-id*="urn:li:ugcPost"]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-id' };
+    }
+
+    // Try broader container selectors (no URN, identify by structure)
+    // .occludable-update is LinkedIn's lazy-load wrapper for feed items
+    posts = document.querySelectorAll('.occludable-update');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: null };
+    }
+
+    // Feed shared update v2 — the inner post component
+    posts = document.querySelectorAll('.feed-shared-update-v2');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: null };
+    }
+
+    // Last resort: any element with a data-urn attribute at all
+    posts = document.querySelectorAll('[data-urn]');
+    if (posts.length > 0) {
+      return { elements: posts, urnAttr: 'data-urn' };
+    }
+
+    return { elements: [], urnAttr: null };
+  }
+
+  // Extract a unique ID from a post container
+  function getPostId(container, urnAttr) {
+    if (urnAttr) {
+      return container.getAttribute(urnAttr) || '';
+    }
+    // Fall back: look for data-urn or data-id on the element or its children
+    const urn = container.getAttribute('data-urn')
+      || container.getAttribute('data-id')
+      || '';
+    if (urn) return urn;
+    // Try finding a child with a URN
+    const child = container.querySelector('[data-urn]') || container.querySelector('[data-id]');
+    if (child) return child.getAttribute('data-urn') || child.getAttribute('data-id') || '';
+    // Use text hash as last resort identifier
+    const text = (container.innerText || '').substring(0, 100);
+    return 'text-hash-' + text.length + '-' + hashCode(text);
+  }
+
+  function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  async function scrapePost(container, urnAttr) {
+    const urn = getPostId(container, urnAttr);
 
     // Click "see more" to expand truncated content
     const seeMoreBtn = container.querySelector('button.feed-shared-inline-show-more-text')
-      || container.querySelector('button[aria-label*="see more"]');
+      || container.querySelector('button[aria-label*="see more"]')
+      || container.querySelector('button[aria-label*="See more"]');
     if (seeMoreBtn) {
       seeMoreBtn.click();
       await sleep(300);
     }
 
-    // Post text
+    // Post text — try multiple selectors
     const textEl = container.querySelector('.update-components-text')
-      || container.querySelector('.feed-shared-update-v2__commentary');
+      || container.querySelector('.feed-shared-update-v2__commentary')
+      || container.querySelector('.feed-shared-text')
+      || container.querySelector('.break-words');
     const text = textEl ? textEl.innerText.trim() : '';
 
-    // Date
+    // Date — try multiple patterns
     let date = '';
-    const dateEl = container.querySelector('.update-components-actor__sub-description');
+    const dateEl = container.querySelector('.update-components-actor__sub-description')
+      || container.querySelector('.feed-shared-actor__sub-description');
     if (dateEl) {
       const hiddenSpan = dateEl.querySelector('span.visually-hidden');
       if (hiddenSpan) {
@@ -65,6 +162,13 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
         raw = raw.replace(/Edited/gi, '').replace(/Visible/gi, '').replace(/[\n\r]/g, '').trim();
         if (raw.includes('•')) raw = raw.split('•')[0].trim();
         date = raw;
+      }
+    }
+    // Fallback: try looking for time element
+    if (!date) {
+      const timeEl = container.querySelector('time');
+      if (timeEl) {
+        date = timeEl.getAttribute('datetime') || timeEl.innerText || '';
       }
     }
 
@@ -81,6 +185,14 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
       } else {
         const countVal = container.querySelector('.social-details-social-counts__count-value');
         if (countVal) likes = parseCount(countVal.innerText);
+        // Try broader: any element mentioning reactions
+        if (likes === 0) {
+          const socialCounts = container.querySelector('.social-details-social-counts');
+          if (socialCounts) {
+            const m = socialCounts.innerText.match(/([\d,]+[kKmM]?)\s*(?:reaction|like)/i);
+            if (m) likes = parseCount(m[1]);
+          }
+        }
       }
     }
 
@@ -139,7 +251,7 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
       }
     }
 
-    // 1. Search inside the data-urn container
+    // 1. Search inside the container
     searchEl(container);
 
     // 2. Search parent wrapper (analytics may be a sibling of the data-urn element)
@@ -167,7 +279,10 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     if (impressions < 0) impressions = 0;
 
     // Construct direct link to post
-    const url = urn ? 'https://www.linkedin.com/feed/update/' + urn + '/' : '';
+    let url = '';
+    if (urn && urn.startsWith('urn:')) {
+      url = 'https://www.linkedin.com/feed/update/' + urn + '/';
+    }
 
     // Diagnostic: capture nearby class names when impressions not found
     let _debug = '';
@@ -194,27 +309,43 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       if (!alive()) return false;
-      const found = document.querySelectorAll('[data-urn*="urn:li:activity"]');
-      if (found.length > 0) return true;
+      const result = findPostContainers();
+      if (result.elements.length > 0) return true;
       // Try scrolling a bit to trigger lazy loading
       window.scrollBy(0, 300);
       await sleep(800);
     }
-    return document.querySelectorAll('[data-urn*="urn:li:activity"]').length > 0;
+    return findPostContainers().elements.length > 0;
+  }
+
+  // --- Diagnostic: log what selectors find on this page ---
+  function logDiagnostics() {
+    const diag = {};
+    POST_SELECTORS.forEach(sel => {
+      try {
+        diag[sel] = document.querySelectorAll(sel).length;
+      } catch(e) { diag[sel] = 'error'; }
+    });
+    diag['[data-urn] (any)'] = document.querySelectorAll('[data-urn]').length;
+    diag['[data-id] (any)'] = document.querySelectorAll('[data-id]').length;
+    console.log('[LinkedIn Scraper] DOM diagnostics:', JSON.stringify(diag, null, 2));
+    console.log('[LinkedIn Scraper] Page type:', config.pageType, '| URL:', window.location.href);
   }
 
   // --- Main scraping loop ---
   const posts = [];
-  const seenUrns = new Set();
+  const seenIds = new Set();
   let noNewCount = 0;
   const maxNoNew = config.limitType === 'none' ? 8 : 5;
 
   try {
     saveProgress('started', posts);
 
-    // Wait up to 15 seconds for LinkedIn to load at least one post
-    const postsLoaded = await waitForPosts(15000);
+    // Wait up to 20 seconds for LinkedIn to load at least one post
+    // (company pages can be slower to render)
+    const postsLoaded = await waitForPosts(20000);
     if (!postsLoaded && alive()) {
+      logDiagnostics();
       saveProgress('error', posts, 'No posts found on this page. Make sure you are on a LinkedIn activity/posts page and the posts have loaded.');
       return;
     }
@@ -223,20 +354,31 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     await sleep(1500);
 
     while (alive()) {
-      // Find outermost post containers (not nested inside another activity)
-      const all = document.querySelectorAll('[data-urn*="urn:li:activity"]');
-      const outermost = Array.from(all).filter(el =>
-        !el.parentElement.closest('[data-urn*="urn:li:activity"]')
-      );
+      const { elements: allContainers, urnAttr } = findPostContainers();
+
+      // Filter to outermost containers (avoid nested posts)
+      const outermost = Array.from(allContainers).filter(el => {
+        // Check if any ancestor (up to 5 levels) is also a post container
+        let parent = el.parentElement;
+        let depth = 0;
+        while (parent && depth < 5) {
+          if (parent.matches && POST_SELECTORS.some(sel => { try { return parent.matches(sel); } catch(e) { return false; } })) {
+            return false;
+          }
+          parent = parent.parentElement;
+          depth++;
+        }
+        return true;
+      });
 
       let newFound = 0;
 
       for (const container of outermost) {
         if (!alive()) break;
 
-        const urn = container.getAttribute('data-urn');
-        if (seenUrns.has(urn)) continue;
-        seenUrns.add(urn);
+        const postId = getPostId(container, urnAttr);
+        if (!postId || seenIds.has(postId)) continue;
+        seenIds.add(postId);
 
         // Skip reposts/reshares — look for "reposted" in the header area
         // (Company pages: keep reposts — they're intentional content curation)
@@ -246,7 +388,15 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
           if (headerEl && /reposted/i.test(headerEl.innerText)) continue;
         }
 
-        const post = await scrapePost(container);
+        // Skip empty containers (no text content at all)
+        const containerText = container.innerText || '';
+        if (containerText.trim().length < 10) continue;
+
+        const post = await scrapePost(container, urnAttr);
+
+        // Skip posts with no meaningful text
+        if (!post.text && post.likes === 0 && post.comments === 0) continue;
+
         posts.push(post);
         newFound++;
 
@@ -279,7 +429,8 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
 
       // Click "load more" pagination button if present
       const loadMoreBtn = document.querySelector('button.scaffold-finite-scroll__load-button')
-        || document.querySelector('button[aria-label*="Show more"]');
+        || document.querySelector('button[aria-label*="Show more"]')
+        || document.querySelector('button[aria-label*="Load more"]');
       if (loadMoreBtn) {
         loadMoreBtn.click();
         await sleep(1500);
@@ -290,6 +441,7 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
       await sleep(randomDelay());
     }
   } catch (err) {
+    logDiagnostics();
     saveProgress('error', posts, err.message);
     return;
   }
