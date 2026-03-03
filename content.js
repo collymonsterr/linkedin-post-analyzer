@@ -318,18 +318,31 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     return findPostContainers().elements.length > 0;
   }
 
-  // --- Diagnostic: log what selectors find on this page ---
-  function logDiagnostics() {
+  // --- Diagnostic: gather what selectors find on this page ---
+  function getDiagnostics() {
     const diag = {};
     POST_SELECTORS.forEach(sel => {
-      try {
-        diag[sel] = document.querySelectorAll(sel).length;
-      } catch(e) { diag[sel] = 'error'; }
+      try { diag[sel] = document.querySelectorAll(sel).length; } catch(e) {}
     });
     diag['[data-urn] (any)'] = document.querySelectorAll('[data-urn]').length;
     diag['[data-id] (any)'] = document.querySelectorAll('[data-id]').length;
+    diag['article'] = document.querySelectorAll('article').length;
+    diag['.scaffold-finite-scroll__content > *'] = document.querySelectorAll('.scaffold-finite-scroll__content > *').length;
+
+    // Sample some class names from the feed area
+    const feedClasses = new Set();
+    const mainContent = document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
+    const allDivs = mainContent.querySelectorAll('div[class]');
+    for (let i = 0; i < allDivs.length && feedClasses.size < 30; i++) {
+      const cl = allDivs[i].className;
+      if (typeof cl === 'string' && (cl.includes('feed') || cl.includes('update') || cl.includes('post') || cl.includes('org') || cl.includes('occlu') || cl.includes('content'))) {
+        feedClasses.add(cl.split(/\s+/).slice(0, 3).join(' '));
+      }
+    }
+    diag._feedClasses = Array.from(feedClasses).slice(0, 15);
+
     console.log('[LinkedIn Scraper] DOM diagnostics:', JSON.stringify(diag, null, 2));
-    console.log('[LinkedIn Scraper] Page type:', config.pageType, '| URL:', window.location.href);
+    return diag;
   }
 
   // --- Main scraping loop ---
@@ -345,8 +358,14 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
     // (company pages can be slower to render)
     const postsLoaded = await waitForPosts(20000);
     if (!postsLoaded && alive()) {
-      logDiagnostics();
-      saveProgress('error', posts, 'No posts found on this page. Make sure you are on a LinkedIn activity/posts page and the posts have loaded.');
+      const diag = getDiagnostics();
+      const diagSummary = Object.entries(diag)
+        .filter(([k, v]) => k !== '_feedClasses' && v > 0)
+        .map(([k, v]) => k + ':' + v)
+        .join(', ');
+      const classesSummary = (diag._feedClasses || []).join(' | ');
+      const msg = 'No posts found. Selectors: [' + (diagSummary || 'none matched') + ']. Classes: [' + (classesSummary || 'none') + ']. URL: ' + window.location.href;
+      saveProgress('error', posts, msg);
       return;
     }
 
@@ -441,7 +460,7 @@ window._scraperGeneration = (window._scraperGeneration || 0) + 1;
       await sleep(randomDelay());
     }
   } catch (err) {
-    logDiagnostics();
+    getDiagnostics();
     saveProgress('error', posts, err.message);
     return;
   }
